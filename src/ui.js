@@ -60,7 +60,14 @@ export class UI {
     const startBtn = $('#b-start'), newBtn = $('#b-new');
     if (g.hasSave()) { startBtn.textContent = 'Continue'; newBtn.style.display = ''; }
     startBtn.addEventListener('click', () => { intro.classList.add('gone'); g.start(); });
-    newBtn.addEventListener('click', () => { if (confirm('Start a fresh village? Your current one will be forgotten.')) g.resetVillage(); });
+    // two-step confirm (no browser dialogs, they're blocked in some embeds)
+    let armed = 0;
+    newBtn.addEventListener('click', () => {
+      if (Date.now() - armed < 4000) { g.resetVillage(); return; }
+      armed = Date.now();
+      newBtn.textContent = 'Click again to start over';
+      setTimeout(() => { if (Date.now() - armed >= 3900) newBtn.textContent = 'New village'; }, 4000);
+    });
   }
 
   showHelp(on) { $('#help').classList.toggle('show', on); }

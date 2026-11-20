@@ -42,7 +42,7 @@ button {
 }
 
 /* stats */
-#stats { top: 16px; left: 16px; display: flex; gap: 6px; padding: 8px 10px; align-items: center; }
+#stats { top: calc(16px + env(safe-area-inset-top, 0px)); left: calc(16px + env(safe-area-inset-left, 0px)); display: flex; gap: 6px; padding: 8px 10px; align-items: center; }
 .stat { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 14px; background: rgba(255, 255, 255, 0.55); font-weight: 600; font-size: 17px; min-width: 64px; }
 .stat .ico { font-size: 18px; }
 .stat.bump { animation: bump 0.45s cubic-bezier(.2, .9, .3, 1.4); }
@@ -52,7 +52,7 @@ button {
 .bar > div { height: 100%; width: 50%; border-radius: 6px; background: linear-gradient(90deg, #f7b2a0, #f6c96a); transition: width 1s ease; }
 
 /* clock */
-#clock { top: 16px; right: 16px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
+#clock { top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 12px; padding: 8px 12px; }
 .dial { position: relative; width: 38px; height: 38px; border-radius: 50%; background: conic-gradient(from 180deg, #2e3a64 0 25%, #f3b48f 25% 30%, #9fd0f0 30% 72%, #f7a77a 72% 79%, #2e3a64 79% 100%); box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.8); }
 #dial-hand { position: absolute; left: 50%; top: 50%; width: 3px; height: 16px; background: var(--ink); border-radius: 2px; transform-origin: 50% 0; transform: rotate(0deg); }
 #dial-ico { position: absolute; inset: 0; display: grid; place-items: center; font-size: 14px; }
@@ -63,7 +63,7 @@ button {
 .btns button.on { opacity: 1; background: #fff; box-shadow: 0 1px 4px rgba(80, 55, 30, 0.15); }
 
 /* toolbar */
-#toolbar { bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 8px; }
+#toolbar { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 8px; }
 body.playing #toolbar { transform: translateX(-50%); }
 body:not(.playing) #toolbar { transform: translate(-50%, 12px); }
 .tool {
@@ -141,16 +141,16 @@ button.big.alt { background: #fff; color: var(--ink); box-shadow: 0 4px 0 #dccbb
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; color: var(--ink-soft); }
 
 @media (max-width: 760px) {
-  #stats { top: 8px; left: 8px; right: 8px; flex-wrap: wrap; padding: 6px; }
+  #stats { top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; flex-wrap: wrap; padding: 6px; }
   .stat { font-size: 14px; min-width: 0; padding: 3px 8px; }
   .stat.cosy { min-width: 0; }
   #clock { top: auto; bottom: 108px; right: 8px; padding: 6px 8px; gap: 6px; flex-wrap: wrap; max-width: 210px; justify-content: flex-end; }
-  #toolbar { bottom: 8px; max-width: calc(100vw - 16px); overflow-x: auto; justify-content: flex-start; }
+  #toolbar { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); max-width: calc(100vw - 16px); overflow-x: auto; justify-content: flex-start; }
   .tool { width: 62px; height: 74px; flex: none; }
   .tool .tn { font-size: 10px; }
   .tool-desc { display: none; }
   #hint { display: none; }
   .logo { font-size: 44px; }
   .intro-card { padding: 24px 24px; margin: 0 16px; }
-  #toasts { bottom: 200px; }
+  #toasts { bottom: 260px; }
 }
