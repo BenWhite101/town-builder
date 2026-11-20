@@ -21,18 +21,37 @@ npm run preview      # serve the production build
 
 ## How to play
 
+The game switches between mouse and touch controls automatically, depending on what you last used.
+
+### Mouse & keyboard
+
 | Action | Controls |
 |---|---|
 | Pick a building | Click it in the bottom bar, or press `1`–`8` |
-| Place | Left-click on the meadow |
+| Place | Click on the meadow (dragging moves the camera instead) |
 | Rotate | `R`, or middle-click |
 | Paint paths | Path tool, then click and drag |
-| Demolish | `X`, then click (you get half the wood back) |
+| Demolish | `X`, then click a building or drag over paths (half the wood back) |
 | Cancel | `Esc` or right-click |
-| Move camera | `WASD`, arrow keys, or left-drag when no tool is selected |
+| Move camera | Left-drag, `WASD` or arrow keys |
 | Orbit | Right-drag, or `Q` / `E` |
 | Zoom | Scroll wheel |
 | Pause | `Space` |
+
+### Touch
+
+| Action | Gesture |
+|---|---|
+| Move camera | Drag with one finger (it glides a little when you let go) |
+| Zoom / turn | Pinch, and twist two fingers |
+| Build | Pick from the bar, drag the see-through building or tap the meadow to position it, then press **Build** |
+| Rotate | ↻ button in the build bar |
+| Paint paths | Drag one finger, or tap for a single tile. Two fingers still move the camera |
+| Demolish | 🧹, then tap a building and confirm, or drag over paths to erase |
+| Info | Tap a villager or building |
+| Sound / graphics / help | ⚙️ button |
+
+A touch only counts as a tap if the finger barely moves, lifts quickly and no second finger joins, so moving the camera never builds or selects anything by accident.
 
 ### Buildings
 
@@ -64,7 +83,8 @@ src/
   villagers.js    villager models, A* pathing, job/sleep behaviour
   fish.js         fish swimming and jumping in the lake
   sky.js          day/night palette, sun/moon, sky dome, clouds
-  camera.js       smooth damped orbit camera
+  camera.js       smooth damped orbit camera with pan inertia
+  input.js        separate mouse and touch gesture handling
   particles.js    smoke, dust, splashes, fireflies, ripples
   audio.js        synthesised sound effects, ambience and music
   ui.js           HUD, toolbar, toasts and tooltips

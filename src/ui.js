@@ -53,7 +53,26 @@ export class UI {
       this.refresh(true);
       g.toast(g.quality === 'high' ? 'Pretty graphics ✨' : 'Lighter graphics – smoother on slower machines');
     });
-    $('#b-help').addEventListener('click', () => this.showHelp(true));
+    $('#b-help').addEventListener('click', () => { this.showHelp(true); $('#clock').classList.remove('open'); });
+    $('#b-menu').addEventListener('click', () => { g.audio.click(); $('#clock').classList.toggle('open'); });
+    // close the touch settings menu when tapping elsewhere
+    addEventListener('pointerdown', (e) => { if (!e.target.closest('#clock')) $('#clock').classList.remove('open'); });
+
+    // touch action bar
+    this.ab = { el: $('#actionbar'), title: $('#actionbar .ab-title'), sub: $('#actionbar .ab-sub'), ok: $('#ab-ok'), cancel: $('#ab-cancel'), rotate: $('#ab-rotate'), key: null, state: null };
+    this.ab.ok.addEventListener('click', () => {
+      const st = this.ab.state;
+      if (!st) return;
+      if (st.kind === 'build') g.confirmPlace();
+      else if (st.kind === 'demolish') g.confirmDemolish();
+      else g.setTool(null);
+    });
+    this.ab.cancel.addEventListener('click', () => {
+      if (this.ab.state?.kind === 'demolish') { g.demolishSel = null; g.audio.click(); } else g.setTool(null);
+    });
+    this.ab.rotate.addEventListener('click', () => g.rotate());
+    this.infoEl = $('#infocard');
+    this.infoEl.addEventListener('click', () => { g.infoTarget = null; this.info(null); });
     $('#help-close').addEventListener('click', () => this.showHelp(false));
 
     const intro = $('#intro');
@@ -72,6 +91,51 @@ export class UI {
 
   showHelp(on) { $('#help').classList.toggle('show', on); }
 
+  // touch: the bar above the toolbar that confirms placing or removing
+  actionBar(st) {
+    const ab = this.ab;
+    let key = null;
+    if (st?.kind === 'build') key = `b|${st.def.name}|${st.ok}|${st.why}`;
+    else if (st?.kind === 'demolish') key = `d|${st.b.id}`;
+    else if (st?.kind === 'hint') key = `h|${st.tool}`;
+    ab.state = st;
+    if (key === ab.key) return;
+    ab.key = key;
+    ab.el.classList.toggle('show', !!st);
+    if (!st) return;
+    ab.el.dataset.kind = st.kind;
+    ab.rotate.hidden = st.kind !== 'build';
+    ab.cancel.hidden = st.kind === 'hint';
+    ab.ok.classList.toggle('danger', st.kind === 'demolish');
+    if (st.kind === 'build') {
+      const d = st.def;
+      ab.title.textContent = `${d.icon} ${d.name} · ${d.cost} 🪵`;
+      ab.sub.innerHTML = st.why ? `<span class="bad">${st.why}</span>` : 'Drag it or tap the meadow to move it';
+      ab.ok.textContent = 'Build';
+      ab.ok.disabled = !st.ok;
+    } else if (st.kind === 'demolish') {
+      const d = st.b.def;
+      ab.title.textContent = `Remove ${d.icon} ${d.name}?`;
+      ab.sub.textContent = `You'll get ${Math.floor(d.cost / 2)} 🪵 back`;
+      ab.ok.textContent = 'Remove';
+      ab.ok.disabled = false;
+    } else {
+      const path = st.tool === 'path';
+      ab.title.textContent = path ? '👣 Painting paths' : '🧹 Tidying up';
+      ab.sub.textContent = path ? 'Drag to paint, tap for one tile. Two fingers move the view.' : 'Tap a building to remove it, or drag over paths to erase them.';
+      ab.ok.textContent = 'Done';
+      ab.ok.disabled = false;
+    }
+  }
+
+  // touch: card describing a tapped villager or building
+  info(html) {
+    if (html === this._info) return;
+    this._info = html;
+    if (html) this.infoEl.innerHTML = `${html}<div class="info-close">✕</div>`;
+    this.infoEl.classList.toggle('show', !!html);
+  }
+
   refresh(force) {
     const g = this.game;
     for (const [t, el] of Object.entries(this.toolEls)) {
@@ -83,8 +147,13 @@ export class UI {
     const hint = this.els.hint;
     if (g.tool === 'path') hint.innerHTML = 'Click & drag to paint paths · Right-click to stop';
     else if (g.tool === 'demolish') hint.innerHTML = 'Click buildings or drag over paths to remove';
-    else if (g.tool) hint.innerHTML = '<kbd>R</kbd> rotate · Right-click to cancel';
+    else if (g.tool) hint.innerHTML = 'Click to build · <kbd>R</kbd> rotate · Right-click to cancel';
     else hint.innerHTML = 'Drag to move · Right-drag to orbit · Scroll to zoom';
+    // keep the active tool visible in the scrolling touch toolbar
+    if (g.tool !== this._lastTool) {
+      this._lastTool = g.tool;
+      if (g.tool && g.isTouch && this.toolEls[g.tool]) this.toolEls[g.tool].scrollIntoView?.({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+    }
     if (force) this.last = {};
   }
 

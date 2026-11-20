@@ -573,8 +573,8 @@ export class Villagers {
     }
   }
 
-  pick(camera, mx, my, w, h) {
-    let best = null, bd = 22 * 22;
+  pick(camera, mx, my, w, h, radius = 22) {
+    let best = null, bd = radius * radius;
     const p = this._tmp;
     for (const v of this.list) {
       if (v.inside) continue;

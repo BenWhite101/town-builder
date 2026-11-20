@@ -99,6 +99,7 @@ export class Audio {
     this._noise({ dur: 0.35, vol: 0.05 * v, freq: 600, q: 0.5, type: 'lowpass' });
   }
   poof(x, z) { const v = this._vol(x, z) * 0.9 + 0.1; this._noise({ dur: 0.45, vol: 0.12 * v, freq: 500, q: 0.6, type: 'lowpass' }); this._tone(300, { dur: 0.25, vol: 0.06 * v, slide: 0.5 }); }
+  tick() { this._tone(1320, { dur: 0.035, vol: 0.025, type: 'sine' }); }
   click() { this._tone(880, { dur: 0.06, vol: 0.05, type: 'triangle' }); }
   paint() { this._noise({ dur: 0.08, vol: 0.05, freq: 900, q: 0.8 }); }
   chop(x, z) { const v = this._vol(x, z); if (v < 0.02) return; this._noise({ dur: 0.07, vol: 0.22 * v, freq: 1800, q: 2 }); this._tone(180, { dur: 0.08, vol: 0.12 * v, slide: 0.6, type: 'triangle' }); }

@@ -34,7 +34,8 @@
       <button data-speed="2" title="Fast">⏩</button>
       <button data-speed="4" title="Faster">⏭</button>
     </div>
-    <div class="btns">
+    <button id="b-menu" class="menu-btn" title="Settings" aria-label="Settings">⚙️</button>
+    <div class="btns" id="settings">
       <button id="b-sfx" class="on" title="Sound effects">🔊</button>
       <button id="b-music" class="on" title="Music">🎵</button>
       <button id="b-gfx" class="on" title="Graphics quality">✨</button>
@@ -45,19 +46,39 @@
   <!-- bottom: build toolbar -->
   <div id="toolbar" class="panel hidden-ui"></div>
   <div id="hint" class="hidden-ui"></div>
+
+  <!-- touch only: confirm bar for placing / removing, and an info card for tapped things -->
+  <div id="actionbar" class="panel">
+    <div class="ab-text"><div class="ab-title"></div><div class="ab-sub"></div></div>
+    <div class="ab-btns">
+      <button id="ab-cancel" class="ab-btn" aria-label="Cancel">✕</button>
+      <button id="ab-rotate" class="ab-btn" aria-label="Rotate">↻</button>
+      <button id="ab-ok" class="ab-ok">Build</button>
+    </div>
+  </div>
+  <div id="infocard" class="panel"></div>
   <div id="toasts"></div>
   <div id="tooltip"></div>
   <div id="floaters"></div>
 
   <div id="help" class="panel modal">
     <h2>How to play</h2>
-    <ul>
+    <ul class="for-mouse">
       <li><b>Build</b> – pick something from the bar at the bottom (or press <kbd>1</kbd>–<kbd>8</kbd>) and click on the meadow.</li>
-      <li><b>Rotate</b> – <kbd>R</kbd> or mouse wheel click while placing.</li>
-      <li><b>Move</b> – <kbd>W A S D</kbd>, or drag with the left mouse when nothing is selected.</li>
+      <li><b>Rotate</b> – <kbd>R</kbd> or middle-click while placing.</li>
+      <li><b>Move</b> – drag with the left mouse, or <kbd>W A S D</kbd>.</li>
       <li><b>Orbit</b> – right-drag, or <kbd>Q</kbd> / <kbd>E</kbd>. <b>Zoom</b> – scroll.</li>
-      <li><b>Demolish</b> – <kbd>X</kbd> then click. You get half the wood back.</li>
+      <li><b>Paths</b> – click and drag to paint.</li>
+      <li><b>Demolish</b> – <kbd>X</kbd> then click a building, or drag over paths. You get half the wood back.</li>
       <li><kbd>Esc</kbd> or right-click to put the tool down. <kbd>Space</kbd> pauses.</li>
+    </ul>
+    <ul class="for-touch">
+      <li><b>Look around</b> – drag with one finger. Pinch to zoom, twist two fingers to turn.</li>
+      <li><b>Build</b> – pick something from the bar, drag the see-through building (or tap the meadow) to move it, then press <b>Build</b>.</li>
+      <li><b>Rotate</b> – the ↻ button.</li>
+      <li><b>Paths</b> – drag one finger to paint, or tap for a single tile. Use two fingers to move the view while painting.</li>
+      <li><b>Demolish</b> – 🧹, then tap a building and confirm, or drag over paths to erase them.</li>
+      <li>Tap a villager or building to see what it's up to.</li>
     </ul>
     <p>Villagers find jobs on their own. Woodcutters fell trees, farmers grow wheat, fishers catch fish in the lake. Build cottages so new families can move in – they come faster when the village is cosy.</p>
     <p class="small">Your village saves itself automatically.</p>
