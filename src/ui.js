@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFS } from './buildings.js';
+import { DEFS, TOOL_ORDER } from './buildings.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -19,13 +19,12 @@ export class UI {
 
   _buildToolbar() {
     const tb = this.els.toolbar;
-    const tools = ['path', 'cottage', 'farm', 'woodcutter', 'fishery', 'well', 'garden', 'lantern'];
     this.toolEls = {};
-    for (const t of tools) {
+    for (const t of TOOL_ORDER) {
       const d = DEFS[t];
       const b = document.createElement('button');
       b.className = 'tool';
-      b.innerHTML = `<span class="tk">${d.key}</span><span class="ti">${d.icon}</span><span class="tn">${d.name}</span><span class="tc">${d.cost ? d.cost + ' 🪵' : 'free'}</span>
+      b.innerHTML = `<span class="tk">${d.key.toUpperCase()}</span><span class="ti">${d.icon}</span><span class="tn">${d.name}</span><span class="tc">${d.cost ? d.cost + ' 🪵' : 'free'}</span>
         <div class="tool-desc"><b>${d.icon} ${d.name}</b>${d.desc}</div>`;
       b.addEventListener('click', () => { this.game.audio.init(); this.game.setTool(this.game.tool === t ? null : t); });
       tb.appendChild(b);
@@ -43,8 +42,9 @@ export class UI {
   _wire() {
     const g = this.game;
     document.querySelectorAll('[data-speed]').forEach((b) => b.addEventListener('click', () => { g.audio.init(); g.setSpeed(+b.dataset.speed); g.audio.click(); }));
-    $('#b-sfx').addEventListener('click', (e) => { g.audio.init(); g.audio.setSfx(!g.audio.sfxOn); e.currentTarget.classList.toggle('on', g.audio.sfxOn); e.currentTarget.textContent = g.audio.sfxOn ? '🔊' : '🔈'; });
-    $('#b-music').addEventListener('click', (e) => { g.audio.init(); g.audio.setMusic(!g.audio.musicOn); e.currentTarget.classList.toggle('on', g.audio.musicOn); });
+    const setToggle = (el, on) => { el.classList.toggle('on', on); el.setAttribute('aria-pressed', String(on)); };
+    $('#b-sfx').addEventListener('click', (e) => { g.audio.init(); g.audio.setSfx(!g.audio.sfxOn); setToggle(e.currentTarget, g.audio.sfxOn); g.saveSettings(); g.audio.click(); });
+    $('#b-music').addEventListener('click', (e) => { g.audio.init(); g.audio.setMusic(!g.audio.musicOn); setToggle(e.currentTarget, g.audio.musicOn); g.saveSettings(); });
     $('#b-gfx').addEventListener('click', () => {
       g.quality = g.quality === 'high' ? 'low' : 'high';
       try { localStorage.setItem('hearthvale-gfx', g.quality); } catch { /* */ }
@@ -53,9 +53,17 @@ export class UI {
       this.refresh(true);
       g.toast(g.quality === 'high' ? 'Pretty graphics ✨' : 'Lighter graphics – smoother on slower machines');
     });
+    const blur = $('#s-blur'), blurVal = $('#s-blur-val');
+    const showBlur = () => { blurVal.textContent = blur.value === '0' ? 'Off' : `${blur.value}%`; };
+    blur.value = String(Math.round(g.settings.blur * 100));
+    showBlur();
+    blur.addEventListener('input', () => { g.settings.blur = +blur.value / 100; showBlur(); });
+    blur.addEventListener('change', () => g.saveSettings());
+    setToggle($('#b-sfx'), g.audio.sfxOn);
+    setToggle($('#b-music'), g.audio.musicOn);
     $('#b-help').addEventListener('click', () => { this.showHelp(true); $('#clock').classList.remove('open'); });
     $('#b-menu').addEventListener('click', () => { g.audio.click(); $('#clock').classList.toggle('open'); });
-    // close the touch settings menu when tapping elsewhere
+    // close the settings panel when clicking elsewhere
     addEventListener('pointerdown', (e) => { if (!e.target.closest('#clock')) $('#clock').classList.remove('open'); });
 
     // touch action bar
@@ -144,6 +152,7 @@ export class UI {
     }
     document.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', +b.dataset.speed === g.speed));
     $('#b-gfx').classList.toggle('on', g.quality === 'high');
+    $('#b-gfx').setAttribute('aria-pressed', String(g.quality === 'high'));
     const hint = this.els.hint;
     if (g.tool === 'path') hint.innerHTML = 'Click & drag to paint paths · Right-click to stop';
     else if (g.tool === 'demolish') hint.innerHTML = 'Click buildings or drag over paths to remove';
@@ -172,10 +181,11 @@ export class UI {
       set('cosy', label, e.cosy);
       if (l.woodPoor !== g.res.wood) { l.woodPoor = g.res.wood; for (const [t, el] of Object.entries(this.toolEls)) if (DEFS[t]) el.classList.toggle('poor', g.res.wood < DEFS[t].cost); }
     }
-    set('day', `Day ${g.day}`, e.day);
+    const se = g.season;
+    set('day', `Day ${g.day}${se ? ' ' + se.icon : ''}`, e.day);
     const t = g.dayT;
     const label = t < 0.22 ? 'Night' : t < 0.3 ? 'Dawn' : t < 0.45 ? 'Morning' : t < 0.58 ? 'Midday' : t < 0.72 ? 'Afternoon' : t < 0.8 ? 'Dusk' : 'Night';
-    set('time', label, e.time);
+    set('time', se ? `${se.name} ${label.toLowerCase()}` : label, e.time);
     e.hand.style.transform = `rotate(${t * 360 + 180}deg)`;
     set('dialIco', t > 0.22 && t < 0.8 ? '☀️' : '🌙', e.dialIco);
 

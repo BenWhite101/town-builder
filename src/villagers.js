@@ -13,7 +13,7 @@ const NAMES = ['Elsie', 'Wren', 'Tobias', 'Maud', 'Hal', 'Ivy', 'Rowan', 'Bram',
 const TUNICS = ['#d9705a', '#6e9ccf', '#8cb369', '#e3b85f', '#b78bc4', '#e8a0a8', '#c98d5a', '#5fa8a0', '#d6865b', '#7f9fb8'];
 const SKINS = ['#f5d0b0', '#ebbd98', '#d39f78', '#a8714d', '#f2c9a5', '#8a5a3c'];
 const HAIRS = ['#5a3b26', '#2f2420', '#c08a4a', '#e2c47e', '#8a3b22', '#a7a29c', '#3d2b1f'];
-export const JOB_LABEL = { farm: 'Farmer', woodcutter: 'Woodcutter', fishery: 'Fisher' };
+export const JOB_LABEL = { farm: 'Farmer', woodcutter: 'Woodcutter', fishery: 'Fisher', bakery: 'Baker', market: 'Stallholder' };
 
 const matCache = new Map();
 const mat = (c, extra) => {
@@ -21,8 +21,8 @@ const mat = (c, extra) => {
   if (!matCache.has(k)) matCache.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...extra }));
   return matCache.get(k);
 };
-const HAT_MATS = { farm: mat('#e8c56a'), woodcutter: mat('#c4513f'), fishery: mat('#4f79b5') };
-const CARRY_MATS = { wood: MAT.log, wheat: mat('#efc357'), fish: mat('#ff9a4d', { emissive: '#ff9a4d', emissiveIntensity: 0.1 }) };
+const HAT_MATS = { farm: mat('#e8c56a'), woodcutter: mat('#c4513f'), fishery: mat('#4f79b5'), bakery: mat('#fffaf0'), market: mat('#8cb369') };
+const CARRY_MATS = { wood: MAT.log, wheat: mat('#efc357'), fish: mat('#ff9a4d', { emissive: '#ff9a4d', emissiveIntensity: 0.1 }), bread: mat('#c98a4a') };
 
 let nameIdx = Math.floor(Math.random() * NAMES.length);
 let vid = 1;
@@ -42,7 +42,7 @@ export class Villagers {
 
   cost = (i, j) => {
     const k = cellIndex(i, j);
-    if (this.grid.water[k]) return Infinity;
+    if (this.grid.water[k]) return this.grid.bridge[k] ? 0.55 : Infinity;
     const occ = this.grid.occ[k];
     if (occ !== -1) {
       const b = this.buildings.byId.get(occ);
@@ -110,7 +110,8 @@ export class Villagers {
     p.hat.visible = !!t;
     if (t === 'farm') { p.hat.geometry = VG.strawHat; p.hat.position.set(0, 0.478, 0); }
     if (t === 'woodcutter') { p.hat.geometry = VG.hood; p.hat.position.set(0, 0.45, 0); }
-    if (t === 'fishery') { p.hat.geometry = VG.beanie; p.hat.position.set(0, 0.44, 0); }
+    if (t === 'fishery' || t === 'market') { p.hat.geometry = VG.beanie; p.hat.position.set(0, 0.44, 0); }
+    if (t === 'bakery') { p.hat.geometry = VG.bakerHat; p.hat.position.set(0, 0.46, 0); }
     if (t) p.hat.material = HAT_MATS[t];
     p.hair.visible = t !== 'woodcutter';
   }
@@ -120,7 +121,7 @@ export class Villagers {
     const c = v.parts.carry;
     c.visible = !!kind;
     if (!kind) return;
-    c.geometry = kind === 'wood' ? VG.log : kind === 'wheat' ? VG.basket : VG.fish;
+    c.geometry = kind === 'wood' ? VG.log : kind === 'wheat' || kind === 'bread' ? VG.basket : VG.fish;
     c.material = CARRY_MATS[kind];
     c.position.set(0, kind === 'wood' ? 0.3 : 0.28, 0.1);
   }
@@ -167,7 +168,10 @@ export class Villagers {
   storehouse() { return this.buildings.list.find((b) => b.type === 'storehouse'); }
 
   _releaseTasks(v) {
-    for (const t of [v.task, ...v.tasks]) if (t?.tree) t.tree.reserved = false;
+    for (const t of [v.task, ...v.tasks]) {
+      if (t?.tree) t.tree.reserved = false;
+      if (t?.type === 'depositBakery') t.b.incoming = Math.max(0, (t.b.incoming || 0) - 5);
+    }
     if (v.job?.harvester === v) v.job.harvester = null;
     v.tasks = []; v.task = null; v.path = null;
   }
@@ -192,7 +196,17 @@ export class Villagers {
     this._idlePlan(v);
   }
 
-  _deliverPlan(v) {
+  _deliverPlan(v, kind = v.carrying) {
+    // wheat goes to a bakery when there's one with room in its flour store
+    if (kind === 'wheat') {
+      let best = null, bd = Infinity;
+      for (const b of this.buildings.list) {
+        if (b.type !== 'bakery' || b.stock + (b.incoming || 0) >= 20 || b.anim < 1) continue;
+        const d = (b.x - v.x) ** 2 + (b.z - v.z) ** 2;
+        if (d < bd) { bd = d; best = b; }
+      }
+      if (best) { best.incoming = (best.incoming || 0) + 5; v.tasks.push(this.gotoCell(best.entrance), { type: 'depositBakery', b: best }); return; }
+    }
     const s = this.storehouse();
     if (!s) { this.setCarry(v, null); return; }
     v.tasks.push(this.gotoCell(s.entrance, { face: s }), { type: 'deposit' });
@@ -227,10 +241,21 @@ export class Villagers {
       if (b.crops.growth >= 1 && !b.harvester) {
         b.harvester = v;
         v.tasks.push({ type: 'tool', kind: 'hoe' }, this.goto(pt.x, pt.z), { type: 'harvest', farm: b, t: 2.6 }, { type: 'tool', kind: null }, { type: 'carry', kind: 'wheat' });
-        this._deliverPlan(v);
+        this._deliverPlan(v, 'wheat');
       } else {
         v.tasks.push({ type: 'tool', kind: 'hoe' }, this.goto(pt.x, pt.z), { type: 'tend', farm: b, t: 2.5 + Math.random() * 1.5 });
       }
+    } else if (b.type === 'bakery') {
+      if (b.stock >= 5) {
+        v.tasks.push(this.gotoCell(b.entrance), { type: 'bake', b, t: 5 }, { type: 'carry', kind: 'bread' });
+        this._deliverPlan(v);
+      } else {
+        v.tasks.push(this.gotoCell(b.entrance), { type: 'wait', t: 3 + Math.random() * 3, anim: 'look', faceX: b.x, faceZ: b.z });
+      }
+    } else if (b.type === 'market') {
+      const cell = b.cells[Math.floor(Math.random() * b.cells.length)];
+      const c = cellCenter(cell[0], cell[1]);
+      v.tasks.push(this.goto(c.x + (Math.random() - 0.5) * 0.5, c.z + (Math.random() - 0.5) * 0.5), { type: 'trade', b, t: 7 + Math.random() * 5 });
     } else if (b.type === 'fishery') {
       const s = b.shore;
       if (!s) { v.tasks.push(this.gotoCell(b.entrance), { type: 'wait', t: 5 }); return; }
@@ -245,6 +270,23 @@ export class Villagers {
 
   _idlePlan(v) {
     const r = Math.random();
+    const t = this.dayT ?? 0.5;
+    // evenings: wander over to the chapel
+    const chapels = this.buildings.list.filter((b) => b.type === 'chapel' && b.anim >= 1);
+    if (chapels.length && t > 0.66 && t < 0.77 && Math.random() < 0.6) {
+      const c = chapels[Math.floor(Math.random() * chapels.length)];
+      const e = cellCenter(c.entrance.i, c.entrance.j);
+      const x = e.x + (Math.random() - 0.5) * 1.6, z = e.z + (Math.random() - 0.5) * 1.6;
+      if (this.walkableAt(x, z)) { v.tasks.push(this.goto(x, z), { type: 'wait', t: 6 + Math.random() * 6, anim: 'chat', faceX: c.x, faceZ: c.z }); return; }
+    }
+    const markets = this.buildings.list.filter((b) => b.type === 'market' && b.anim >= 1);
+    if (markets.length && r > 0.55 && r < 0.85) {
+      const m = markets[Math.floor(Math.random() * markets.length)];
+      const cell = m.cells[Math.floor(Math.random() * m.cells.length)];
+      const c = cellCenter(cell[0], cell[1]);
+      v.tasks.push(this.goto(c.x + (Math.random() - 0.5) * 0.5, c.z + (Math.random() - 0.5) * 0.5), { type: 'wait', t: 4 + Math.random() * 5, anim: Math.random() < 0.5 ? 'chat' : 'look', faceX: m.x, faceZ: m.z });
+      return;
+    }
     const wells = this.buildings.list.filter((b) => b.type === 'well');
     if (wells.length && r < 0.45) {
       const w = wells[Math.floor(Math.random() * wells.length)];
@@ -279,6 +321,7 @@ export class Villagers {
 
   // ---- per frame ------------------------------------------------------------------
   update(dt, dayT, time) {
+    this.dayT = dayT;
     for (const v of this.list) {
       if (v.inside) {
         if (v.wakeCheck === undefined || (v.wakeCheck -= dt) <= 0) {
@@ -388,7 +431,7 @@ export class Villagers {
         const f = t.farm;
         if (!this.buildings.byId.has(f.id)) { this._releaseTasks(v); this.setTool(v, null); this._done(v); return; }
         if (t.elapsed >= t.t) {
-          if (t.type === 'tend') f.crops.growth = Math.min(1, f.crops.growth + 0.11);
+          if (t.type === 'tend') f.crops.growth = Math.min(1, f.crops.growth + 0.11 * (this.game.season?.crop ?? 1));
           else {
             f.crops.growth = 0.12; f.harvester = null;
             this.game.audio?.rustle(v.x, v.z);
@@ -424,10 +467,49 @@ export class Villagers {
         }
         return;
       }
+      case 'depositBakery': {
+        t.b.incoming = Math.max(0, (t.b.incoming || 0) - 5);
+        if (this.buildings.byId.has(t.b.id) && v.carrying === 'wheat') {
+          t.b.stock = Math.min(25, t.b.stock + 5);
+          this.setCarry(v, null);
+        } else this._deliverPlan(v); // bakery vanished: take it to the storehouse instead
+        this._done(v);
+        return;
+      }
+      case 'bake': {
+        const b = t.b;
+        if (!this.buildings.byId.has(b.id)) { this._releaseTasks(v); this._done(v); return; }
+        if (!t.started) {
+          if (b.stock < 5) { this._releaseTasks(v); this._done(v); return; }
+          b.stock -= 5; t.started = true;
+        }
+        this._faceDir(v, Math.atan2(b.x - v.x, b.z - v.z), dt, 6);
+        v.anim = 'tend';
+        if (Math.random() < dt * 3) {
+          this.game.particles.spawn({ x: b.x + (Math.random() - 0.5) * 0.6, y: b.y + 0.4, z: b.z + (Math.random() - 0.5) * 0.6, vy: 0.4, life: 1.6, size: 0.08, color: new THREE.Color('#ffd59a'), alpha: 0.8, drag: 1, wobble: 0.3 });
+        }
+        if (t.elapsed >= t.t) this._done(v);
+        return;
+      }
+      case 'trade': {
+        const b = t.b;
+        if (!this.buildings.byId.has(b.id)) { this._releaseTasks(v); this._done(v); return; }
+        v.anim = 'chat';
+        this._faceDir(v, Math.atan2(b.x - v.x, b.z - v.z), dt, 4);
+        if (t.elapsed >= t.t) {
+          // swap spare food for wood with passing merchants
+          if (this.game.res.food >= 30) {
+            this.game.res.food -= 4;
+            this.game.addResource('wood', 3, { x: v.x, y: v.y + 0.7, z: v.z });
+          }
+          this._done(v);
+        }
+        return;
+      }
       case 'deposit': {
         const s = this.storehouse();
         if (v.carrying && s) {
-          const amount = v.carrying === 'wood' ? 4 : v.carrying === 'wheat' ? 5 : 3;
+          const amount = v.carrying === 'wood' ? 4 : v.carrying === 'wheat' ? 5 : v.carrying === 'bread' ? 9 : 3;
           const res = v.carrying === 'wood' ? 'wood' : 'food';
           this.game.addResource(res, amount, { x: v.x, y: v.y + 0.7, z: v.z });
         }
@@ -463,7 +545,10 @@ export class Villagers {
     const s = v.appear < 1 ? 1 - Math.pow(1 - v.appear, 3) * (1 - v.appear * 0.0) : 1;
     v.group.scale.setScalar(Math.max(0.001, s));
     const occ = (() => { const c = worldToCell(v.x, v.z); if (!inBounds(c.i, c.j)) return null; const o = this.grid.occ[cellIndex(c.i, c.j)]; return o !== -1 ? this.buildings.byId.get(o) : null; })();
-    const gy = Math.max(terrainHeight(v.x, v.z), WATER_LEVEL) + (occ?.type === 'farm' ? 0.08 : 0);
+    const cc = worldToCell(v.x, v.z);
+    const onBridge = inBounds(cc.i, cc.j) && this.grid.bridge[cellIndex(cc.i, cc.j)];
+    const gy = onBridge ? this.game.bridges.deckY(cc.i, cc.j) + 0.035
+      : Math.max(terrainHeight(v.x, v.z), WATER_LEVEL) + (occ?.type === 'farm' || occ?.type === 'market' ? 0.08 : 0);
     v.y = damp(v.y, gy, 18, dt);
     v.group.position.set(v.x, v.y, v.z);
     v.group.rotation.y = v.heading;
@@ -593,12 +678,16 @@ export class Villagers {
     const t = v.task?.type;
     if (v.inside) doing = 'sleeping soundly 💤';
     else if (v.carrying === 'wood') doing = 'carrying logs';
-    else if (v.carrying) doing = 'bringing food home';
+    else if (v.carrying === 'bread') doing = 'carrying fresh bread';
+    else if (v.carrying === 'wheat') doing = 'carrying wheat';
+    else if (v.carrying) doing = 'bringing a fish home';
     else if (t === 'chop') doing = 'chopping a tree';
     else if (t === 'tend') doing = 'tending the wheat';
     else if (t === 'harvest') doing = 'harvesting';
     else if (t === 'fish') doing = 'fishing';
-    else if (v.task?.anim === 'chat') doing = 'chatting by the well';
+    else if (t === 'bake') doing = 'baking bread';
+    else if (t === 'trade') doing = 'minding the stall';
+    else if (v.task?.anim === 'chat') doing = 'having a natter';
     else if (t === 'goto') doing = 'on the way';
     return { title: v.name, sub: `${job} · ${doing}` };
   }

@@ -57,26 +57,44 @@ A touch only counts as a tap if the finger barely moves, lifts quickly and no se
 
 | | Building | Cost | What it does |
 |---|---|---|---|
-| 👣 | Path | free | Villagers walk faster on paths and prefer them |
+| 👣 | Path | free | Villagers walk faster on paths and prefer them. Painting across the brook builds a footbridge (2 🪵 a tile) |
 | 🏡 | Cottage | 10 🪵 | Home for 3 villagers. New families move in over time |
-| 🌾 | Wheat Farm | 8 🪵 | 2 farmers grow wheat and deliver food |
+| 🌾 | Wheat Farm | 8 🪵 | 2 farmers grow wheat. It becomes food at the storehouse, or a lot more food at a bakery |
 | 🪓 | Woodcutter | 5 🪵 | Fells nearby trees for wood. Stumps grow back |
-| 🎣 | Fishing Hut | 8 🪵 | A fisher catches fish from the shore. Must be built beside the lake |
+| 🎣 | Fishing Hut | 8 🪵 | A fisher catches fish from the shore of the lake or the brook |
+| 🥖 | Bakery | 12 🪵 | Farmers bring wheat here. The baker turns every 5 wheat into 9 bread |
+| 🧺 | Market | 14 🪵 | Villagers browse the stalls. The stallholder trades spare food (when you have 30+) for wood. +10 cosiness when staffed |
+| 🔔 | Chapel | 16 🪵 | Bells at dawn and dusk; villagers gather there in the evening. +14 cosiness |
 | 🪣 | Well | 4 🪵 | Villagers gather here to chat. Adds cosiness |
 | 🌷 | Flower Bed | 1 🪵 | Adds cosiness |
 | 🏮 | Lantern | 2 🪵 | Glows at night. Adds cosiness |
 
-Villagers pick up jobs on their own, carry goods to the storehouse, and head home to sleep when the lanterns come on. The village needs a little food each morning. A cosier village (wells, flowers, lanterns, paths, full bellies) attracts new families faster.
+Villagers pick up jobs on their own, carry goods where they are needed, and head home to sleep when the lanterns come on. The village needs a little food each morning. A cosier village (wells, flowers, lanterns, a market, a chapel, paths, full bellies) attracts new families faster.
 
-The game saves to the browser's local storage every 20 seconds. If it runs slowly, the ✨ button switches to lighter graphics. It also switches automatically when the frame rate drops.
+### Seasons
+
+The seasons change every 3 in-game days.
+
+- **Spring:** some trees blossom pink and petals drift down.
+- **Summer:** crops grow fastest and fireflies come out at night.
+- **Autumn:** leaves turn russet and gold, and fall.
+- **Winter:** snow settles on roofs, trees and fields, the water ices over at the edges, and crops barely grow. Stock up on food in autumn.
+
+### Settings
+
+The ⚙️ button opens sound, music and graphics quality, plus an **edge blur** slider for the miniature-style tilt-shift (0% turns it off). Settings are remembered.
+
+The game saves to the browser's local storage every 20 seconds. If it runs slowly, the graphics switch drops to lighter rendering. It also does this automatically when the frame rate drops.
 
 ## Code layout
 
 ```
 src/
   main.js         game loop, input, placement, save/load, post-processing
-  terrain.js      height field, lake, grid and terrain shader (soft dirt paths, placement grid)
-  water.js        stylised lake shader (depth colour, shoreline foam, sparkles)
+  terrain.js      height field, lake, brook, grid, seamless noise and terrain shader
+  water.js        stylised lake and brook shaders (depth colour, shoreline foam, flowing ripples, ice)
+  bridges.js      footbridges over the brook
+  seasons.js      season cycle and the shader patch for snow, autumn colour and blossom
   nature.js       instanced trees, grass, flowers, rocks, reeds, lily pads
   buildings.js    building definitions, placement rules, animations, smoke and crops
   models.js       procedural low-poly models built from rounded primitives

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32, createNoise2D, smoothstep, lerp } from './noise.js';
+import { seasonal } from './seasons.js';
 
 // ---- Map layout -----------------------------------------------------------
 export const GRID = 64;            // playable cells per side
@@ -29,7 +30,7 @@ export function lakeDistance(x, z) {
   return Math.sqrt(lx * lx + lz * lz) + nC(x * 0.11, z * 0.11) * 0.16 + nC(x * 0.31 + 9, z * 0.31) * 0.04;
 }
 
-export function terrainHeight(x, z) {
+function baseHeight(x, z) {
   // gentle rolling meadow
   let h = 0.55 + fbm(nA, x * 0.03 + 3.1, z * 0.03 - 7.2, 4) * 0.85;
   h = 0.25 + Math.log1p(Math.exp((h - 0.25) * 4)) / 4; // soft floor so land stays above water
@@ -47,6 +48,54 @@ export function terrainHeight(x, z) {
   return h;
 }
 
+// ---- Stream ---------------------------------------------------------------
+// A brook winds out of the western hills, passes north of the village and feeds the lake.
+// Its course is z = streamZ(x) for x in [x0, x1]; its surface steps gently downhill.
+export const STREAM = { x0: -66, x1: 0.6, mouth: -1.2, step: 0.25 };
+export const streamZ = (x) => -4.5 + Math.sin((x + 1.5) * 0.15) * 3.0 + Math.sin(x * 0.33 + 0.7) * 1.3;
+const streamDZ = (x) => 0.45 * Math.cos((x + 1.5) * 0.15) + 0.429 * Math.cos(x * 0.33 + 0.7);
+export const streamWidth = (x) => 0.5 + 0.45 * smoothstep(-36, 0, x); // half-width of the water
+const streamSurf = (() => {
+  const n = Math.ceil((STREAM.x1 - STREAM.x0) / STREAM.step) + 1;
+  const s = new Float32Array(n);
+  let prev = Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = STREAM.x0 + i * STREAM.step;
+    prev = Math.min(prev, baseHeight(x, streamZ(x)) - 0.34);
+    s[i] = Math.max(WATER_LEVEL, prev);
+  }
+  // soften the steps a little but keep it flowing downhill
+  for (let pass = 0; pass < 6; pass++) {
+    for (let i = 1; i < n - 1; i++) s[i] = Math.min(s[i - 1], (s[i - 1] + s[i] * 2 + s[i + 1]) / 4);
+  }
+  for (let i = 0; i < n; i++) if (STREAM.x0 + i * STREAM.step > STREAM.mouth) s[i] = WATER_LEVEL;
+  return s;
+})();
+export function streamSurface(x) {
+  const f = (Math.min(Math.max(x, STREAM.x0), STREAM.x1) - STREAM.x0) / STREAM.step;
+  const i = Math.min(streamSurf.length - 2, Math.floor(f));
+  return lerp(streamSurf[i], streamSurf[i + 1], f - i);
+}
+// distance from (x,z) to the stream centre line, plus local width & surface height
+export function streamInfo(x, z) {
+  if (x < STREAM.x0 - 4 || x > STREAM.x1 + 2) return null;
+  const xc = Math.min(Math.max(x, STREAM.x0), STREAM.x1);
+  const dz = streamDZ(xc);
+  const d = Math.abs(z - streamZ(xc)) / Math.sqrt(1 + dz * dz) + Math.max(0, x - STREAM.x1) * 2;
+  if (d > 6) return null;
+  return { d, w: streamWidth(xc), s: streamSurface(xc) };
+}
+
+export function terrainHeight(x, z) {
+  const h = baseHeight(x, z);
+  const st = streamInfo(x, z);
+  if (!st) return h;
+  const { d, w, s } = st;
+  const target = d < w ? s - 0.04 - 0.36 * (1 - (d / w) ** 2) : s - 0.04 + (d - w) * 0.5;
+  const m = smoothstep(w + 3.0, w + 1.2, d);
+  return lerp(h, Math.min(h, target), m);
+}
+
 // ---- Grid helpers ---------------------------------------------------------
 export const cellIndex = (i, j) => j * GRID + i;
 export const inBounds = (i, j) => i >= 0 && j >= 0 && i < GRID && j < GRID;
@@ -57,6 +106,8 @@ export class Grid {
   constructor() {
     const n = GRID * GRID;
     this.water = new Uint8Array(n);      // 1 = water
+    this.stream = new Uint8Array(n);     // 1 = brook (a bridge can be built here)
+    this.bridge = new Uint8Array(n);     // 1 = bridge over the brook
     this.occ = new Int32Array(n).fill(-1); // building id
     this.path = new Uint8Array(n);       // 1 = path
     this.h = new Float32Array(n);        // centre height
@@ -73,6 +124,8 @@ export class Grid {
           mn = Math.min(mn, hh); mx = Math.max(mx, hh);
           if (hh < WATER_LEVEL + 0.02) wet = true;
         }
+        const st = streamInfo(x, z);
+        if (st && x < STREAM.mouth && st.d < st.w + 0.3) { wet = true; this.stream[k] = 1; }
         this.water[k] = wet ? 1 : 0;
         this.slope[k] = mx - mn;
       }
@@ -88,17 +141,54 @@ export class Grid {
 }
 
 // ---- Terrain mesh ---------------------------------------------------------
-function makeNoiseTexture(size = 128) {
+// Seamless (periodic) noise so the texture tiles without seams or stretching.
+//  R: soft large blobs   G: medium detail   B: smooth cells (worley)   A: fine detail
+function periodicGradient(rng, period) {
+  const g = [];
+  for (let i = 0; i < period * period; i++) { const a = rng() * Math.PI * 2; g.push([Math.cos(a), Math.sin(a)]); }
+  const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+  return (x, y) => { // x, y in [0, period)
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const at = (ix, iy, dx, dy) => { const v = g[((iy % period + period) % period) * period + ((ix % period + period) % period)]; return v[0] * dx + v[1] * dy; };
+    const u = fade(xf), v = fade(yf);
+    const n00 = at(xi, yi, xf, yf), n10 = at(xi + 1, yi, xf - 1, yf);
+    const n01 = at(xi, yi + 1, xf, yf - 1), n11 = at(xi + 1, yi + 1, xf - 1, yf - 1);
+    return (n00 + (n10 - n00) * u + (n01 - n00) * v + (n00 - n10 - n01 + n11) * u * v) * 1.41;
+  };
+}
+function periodicFbm(rng, base, oct) {
+  const layers = [];
+  for (let o = 0; o < oct; o++) layers.push({ f: periodicGradient(rng, base << o), p: base << o, a: Math.pow(0.5, o) });
+  const norm = layers.reduce((s, l) => s + l.a, 0);
+  return (u, v) => layers.reduce((s, l) => s + l.f(u * l.p, v * l.p) * l.a, 0) / norm; // u, v in [0,1)
+}
+function periodicWorley(rng, period) {
+  const pts = [];
+  for (let i = 0; i < period * period; i++) pts.push([rng(), rng()]);
+  return (u, v) => {
+    const x = u * period, y = v * period, xi = Math.floor(x), yi = Math.floor(y);
+    let d = 9;
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+      const cx = xi + ox, cy = yi + oy;
+      const p = pts[((cy % period + period) % period) * period + ((cx % period + period) % period)];
+      d = Math.min(d, Math.hypot(cx + p[0] - x, cy + p[1] - y));
+    }
+    return Math.min(1, d);
+  };
+}
+
+function makeNoiseTexture(size = 256) {
   const r = mulberry32(42);
-  const n1 = createNoise2D(r), n2 = createNoise2D(r);
+  const fR = periodicFbm(r, 4, 4), fG = periodicFbm(r, 8, 4), wB = periodicWorley(r, 10), fA = periodicFbm(r, 32, 2);
   const data = new Uint8Array(size * size * 4);
+  const to8 = (v) => Math.max(0, Math.min(255, Math.round(v * 255)));
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    // tileable by sampling on a torus-ish domain
-    const a = (x / size) * Math.PI * 2, b = (y / size) * Math.PI * 2;
-    const v1 = n1(Math.cos(a) * 2 + 5, Math.sin(a) * 2 + Math.cos(b) * 2) * 0.5 + 0.5;
-    const v2 = n2(Math.cos(a) * 6 + Math.sin(b) * 6, Math.sin(a) * 6 + Math.cos(b) * 6) * 0.5 + 0.5;
+    const u = x / size, v = y / size;
     const k = (y * size + x) * 4;
-    data[k] = v1 * 255; data[k + 1] = v2 * 255; data[k + 2] = r() * 255; data[k + 3] = 255;
+    data[k] = to8(fR(u, v) * 0.5 + 0.5);
+    data[k + 1] = to8(fG(u, v) * 0.5 + 0.5);
+    data[k + 2] = to8(wB(u, v));
+    data[k + 3] = to8(fA(u, v) * 0.5 + 0.5);
   }
   const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -176,7 +266,7 @@ export function createTerrain(grid) {
         float p = texture2D(uPath, puv).r;
         float edge = smoothstep(0.40, 0.56, p + (nzf.r - 0.5) * 0.22);
         vec3 dirt = mix(vec3(0.80, 0.66, 0.47), vec3(0.88, 0.76, 0.56), nzf.g);
-        dirt *= 0.92 + 0.16 * texture2D(uNoise, vWPos.xz * 1.3).b;
+        dirt *= 0.92 + 0.16 * texture2D(uNoise, vWPos.xz * 0.6).a;
         float rim = smoothstep(0.25, 0.45, p) * (1.0 - edge);
         diffuseColor.rgb *= 1.0 - rim * 0.12; // slight darker trodden edge
         diffuseColor.rgb = mix(diffuseColor.rgb, dirt, edge);
@@ -189,6 +279,7 @@ export function createTerrain(grid) {
       `);
   };
 
+  seasonal(mat, { grass: true });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   mesh.name = 'terrain';

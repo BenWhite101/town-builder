@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mulberry32, createNoise2D, smoothstep } from './noise.js';
+import { seasonal } from './seasons.js';
 import {
   terrainHeight, GRID, HALF, WORLD_SIZE, cellIndex, worldToCell, inBounds, LAKE, ISLAND, lakeDistance,
+  streamInfo, streamZ, streamWidth, STREAM,
 } from './terrain.js';
 
 const rng = mulberry32(2024);
@@ -10,6 +12,12 @@ const forestNoise = createNoise2D(rng);
 const flowerNoise = createNoise2D(rng);
 
 export const START = { x: -4, z: 5 }; // village square, kept clear of trees
+
+// how far (x,z) is from the brook's water edge (large when nowhere near)
+function brookGap(x, z) {
+  const st = streamInfo(x, z);
+  return st ? st.d - st.w : 99;
+}
 
 function prep(g) {
   const ng = g.index ? g.toNonIndexed() : g;
@@ -82,6 +90,7 @@ export class Nature {
   _canPlantAt(x, z, inPlay) {
     const h = terrainHeight(x, z);
     if (h < 0.25) return false;
+    if (brookGap(x, z) < 0.9) return false;
     if (inPlay && Math.hypot(x - START.x, z - START.z) < 7.5) return false;
     return true;
   }
@@ -115,6 +124,7 @@ export class Nature {
       const r = Math.max(Math.abs(x), Math.abs(z));
       if (r < HALF + 1) continue;
       if (rng() > smoothstep(HALF, HALF + 9, r) * 0.95) continue;
+      if (brookGap(x, z) < 1.2) continue;
       spots.push({ x, z, play: false });
     }
 
@@ -125,8 +135,8 @@ export class Nature {
       counts[pine]++;
     }
     this.treeMeshes = types.map((t, ti) => {
-      const trunkMat = new THREE.MeshStandardMaterial({ color: '#8a6243', roughness: 1 });
-      const leafMat = swayMaterial(this.timeU, { color: '#ffffff', roughness: 0.9 });
+      const trunkMat = seasonal(new THREE.MeshStandardMaterial({ color: '#8a6243', roughness: 1 }), { snow: 0.6 });
+      const leafMat = seasonal(swayMaterial(this.timeU, { color: '#ffffff', roughness: 0.9 }), { foliage: ti === 0 });
       const trunk = new THREE.InstancedMesh(t.geo.trunk, trunkMat, counts[ti]);
       const canopy = new THREE.InstancedMesh(t.geo.canopy, leafMat, counts[ti]);
       for (const m of [trunk, canopy]) {
@@ -260,12 +270,20 @@ export class Nature {
       const play = Math.abs(x) < HALF && Math.abs(z) < HALF;
       if (play && (Math.hypot(x - START.x, z - START.z) < 7 || rng() < 0.5)) continue;
       if (h < 0.05 && lakeDistance(x, z) < 0.85) continue;
+      if (brookGap(x, z) < 0.6) continue;
       const cluster = 1 + Math.floor(rng() * 3);
       for (let c = 0; c < cluster; c++) {
         spots.push({ x: x + (rng() - 0.5) * 0.8, z: z + (rng() - 0.5) * 0.8, s: (0.4 + rng() * 0.9) * (c ? 0.6 : 1), play });
       }
     }
-    const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, flatShading: false });
+    // smooth pebbles along the brook banks
+    for (let x = -44; x < STREAM.x1 - 2; x += 0.9) {
+      if (rng() < 0.45) continue;
+      const side = rng() < 0.5 ? -1 : 1;
+      const z = streamZ(x) + side * (streamWidth(x) + 0.15 + rng() * 0.5);
+      spots.push({ x, z, s: 0.25 + rng() * 0.3, play: Math.abs(x) < HALF && Math.abs(z) < HALF });
+    }
+    const mat = seasonal(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, flatShading: false }));
     const mesh = new THREE.InstancedMesh(geo, mat, spots.length);
     mesh.castShadow = true; mesh.receiveShadow = true;
     const col = new THREE.Color();
@@ -305,13 +323,13 @@ export class Nature {
       const x = (rng() - 0.5) * 2 * lim, z = (rng() - 0.5) * 2 * lim;
       const f = flowerNoise(x * 0.09, z * 0.09);
       if (f < 0.25) continue;
-      if (terrainHeight(x, z) < 0.3) continue;
+      if (terrainHeight(x, z) < 0.3 || brookGap(x, z) < 0.5) continue;
       const pc = palette[Math.floor((flowerNoise(x * 0.03 + 50, z * 0.03) * 0.5 + 0.5) * palette.length) % palette.length];
       const k = 2 + Math.floor(rng() * 5);
       for (let c = 0; c < k; c++) spots.push({ x: x + (rng() - 0.5) * 0.7, z: z + (rng() - 0.5) * 0.7, c: rng() < 0.85 ? pc : palette[Math.floor(rng() * palette.length)] });
     }
     const headMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8, emissive: '#ffffff', emissiveIntensity: 0.06 });
-    const stemMat = new THREE.MeshStandardMaterial({ color: '#5f9a45', roughness: 1 });
+    const stemMat = seasonal(new THREE.MeshStandardMaterial({ color: '#5f9a45', roughness: 1 }), { grass: true });
     const heads = new THREE.InstancedMesh(head, headMat, spots.length);
     const stems = new THREE.InstancedMesh(stem, stemMat, spots.length);
     const m = new THREE.Matrix4();
@@ -346,7 +364,7 @@ export class Nature {
       for (let b = 0; b < n; b++) {
         const x = cx + rng() - 0.5, z = cz + rng() - 0.5;
         const ht = terrainHeight(x, z);
-        if (ht < 0.22) continue;
+        if (ht < 0.22 || brookGap(x, z) < 0.25) continue;
         if (Math.max(Math.abs(x), Math.abs(z)) > HALF + 3 && ht > 2.6) continue;
         blades.push({ x, z, y: ht, play });
       }
@@ -360,8 +378,9 @@ export class Nature {
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.timeU;
-      shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace('#include <begin_vertex>', `
+      shader.vertexShader = 'uniform float uTime;\nuniform float uSnow;\n' + shader.vertexShader.replace('#include <begin_vertex>', `
         #include <begin_vertex>
+        transformed.y *= 1.0 - uSnow * 0.55; // grass hunkers down under the snow
         vec4 ip = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
         float sw = sin(uTime * 1.7 + ip.x * 0.45 + ip.z * 0.3) * 0.6 + sin(uTime * 3.1 + ip.x * 1.3 - ip.z * 0.8) * 0.25;
         float bend = position.y * position.y;
@@ -371,6 +390,7 @@ export class Nature {
       // light both sides of the blade like the ground beneath it (no dark back faces)
       shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n normal = normalize(vNormal);');
     };
+    seasonal(mat, { grass: true });
     const mesh = new THREE.InstancedMesh(g, mat, blades.length);
     mesh.receiveShadow = true;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color();
@@ -407,7 +427,14 @@ export class Nature {
         for (let c = 0; c < k; c++) spots.push({ x: x + (rng() - 0.5) * 0.4, z: z + (rng() - 0.5) * 0.4 });
       }
     }
-    const reedMat = swayMaterial(this.timeU, { color: '#7aa457', roughness: 1 });
+    for (let x = -46; x < STREAM.x1 - 1; x += 0.35) {
+      if (rng() > 0.4) continue;
+      const side = rng() < 0.5 ? -1 : 1;
+      const z = streamZ(x) + side * (streamWidth(x) + 0.1 + rng() * 0.35);
+      const k = 2 + Math.floor(rng() * 4);
+      for (let c = 0; c < k; c++) spots.push({ x: x + (rng() - 0.5) * 0.4, z: z + (rng() - 0.5) * 0.25 });
+    }
+        const reedMat = seasonal(swayMaterial(this.timeU, { color: '#7aa457', roughness: 1 }), { grass: true, snow: 0.6 });
     const catMat = new THREE.MeshStandardMaterial({ color: '#8a5a3a', roughness: 1 });
     const reeds = new THREE.InstancedMesh(reed, reedMat, spots.length);
     const cats = new THREE.InstancedMesh(cat, catMat, spots.length);
@@ -445,6 +472,20 @@ export class Nature {
     pads.receiveShadow = true;
     this.scene.add(pads, flowers);
     this.updateLilies(0);
+  }
+
+  setSeason(st) {
+    this.flowerHeads.visible = this.flowerStems.visible = st.flowers > 0.3;
+    this.pads.visible = this.lilyFlowers.visible = st.ice < 0.5;
+    this.lilyFlowers.visible = this.lilyFlowers.visible && st.flowers > 0.3;
+  }
+
+  randomTreeNear(x, z, r) {
+    for (let k = 0; k < 6; k++) {
+      const t = this.trees[Math.floor(Math.random() * this.trees.length)];
+      if (t.type === 0 && t.state === 'grown' && (t.x - x) ** 2 + (t.z - z) ** 2 < r * r) return t;
+    }
+    return null;
   }
 
   updateLilies(time) {

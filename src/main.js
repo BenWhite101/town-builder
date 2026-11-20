@@ -10,7 +10,7 @@ import { VerticalTiltShiftShader } from 'three/examples/jsm/shaders/VerticalTilt
 import {
   Grid, createTerrain, raycastTerrain, worldToCell, cellIndex, inBounds, cellCenter, terrainHeight, HALF, LAKE,
 } from './terrain.js';
-import { createWater } from './water.js';
+import { createWater, createStream } from './water.js';
 import { Nature, START } from './nature.js';
 import { Sky } from './sky.js';
 import { CameraRig } from './camera.js';
@@ -22,6 +22,8 @@ import { Audio } from './audio.js';
 import { damp } from './noise.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
+import { Bridges, BRIDGE_COST } from './bridges.js';
+import { seasonAt, applySeason } from './seasons.js';
 
 const DAY_LENGTH = 300; // seconds per in-game day at 1x
 const SAVE_KEY = 'hearthvale-save-v1';
@@ -61,19 +63,27 @@ class Game {
     this.quality = 'high';
     try { this.quality = localStorage.getItem('hearthvale-gfx') || 'high'; } catch { /* storage unavailable */ }
 
+    this.settings = { blur: 0.4, sfx: true, music: true };
+    try { Object.assign(this.settings, JSON.parse(localStorage.getItem('hearthvale-settings') || '{}')); } catch { /* storage unavailable */ }
     this.audio = new Audio();
+    this.audio.sfxOn = this.settings.sfx;
+    this.audio.musicOn = this.settings.music;
     this.grid = new Grid();
     this.terrain = createTerrain(this.grid);
     this.scene.add(this.terrain.mesh);
     this.water = createWater();
     this.water.uniforms.uNoise.value = this.terrain.noiseTex;
     this.scene.add(this.water.mesh);
+    this.stream = createStream();
+    this.stream.uniforms.uNoise.value = this.terrain.noiseTex;
+    this.scene.add(this.stream.mesh);
     this.sky = new Sky(this.scene);
     this.nature = new Nature(this.scene, this.grid, this.timeU);
-    this.particles = new Particles(this.scene, 900);
+    this.particles = new Particles(this.scene, 1600);
     this.sparks = new Particles(this.scene, 160, { additive: true });
     this.ripples = new Ripples(this.scene);
     this.fish = new Fish(this.scene, this.ripples, this.particles, this.audio);
+    this.bridges = new Bridges(this.scene, this.grid);
     this.buildings = new Buildings(this.scene, this.grid, this.terrain, this.nature, this.particles, this.audio);
     this.villagers = new Villagers(this);
     this.rig = new CameraRig(this.camera, this.canvas);
@@ -185,6 +195,21 @@ class Game {
   setPath(i, j, on, silent) {
     if (!inBounds(i, j)) return false;
     const k = cellIndex(i, j);
+    // painting across the brook builds a little footbridge
+    if (on && this.grid.stream[k] && !this.grid.bridge[k] && this.grid.occ[k] === -1) {
+      if (!silent) {
+        if (this.res.wood < BRIDGE_COST) { this.toast(`A bridge needs ${BRIDGE_COST} 🪵 wood`); return false; }
+        this.res.wood -= BRIDGE_COST;
+        const c = cellCenter(i, j);
+        this.audio.pop(c.x, c.z, 0.7);
+      }
+      return this.bridges.add(i, j, silent);
+    }
+    if (!on && this.grid.bridge[k]) {
+      this.bridges.remove(i, j);
+      if (!silent) { this.addResource('wood', 1); const c = cellCenter(i, j); this.audio.poof(c.x, c.z); }
+      return true;
+    }
     if (on && (this.grid.water[k] || this.grid.occ[k] !== -1 || this.grid.path[k])) return false;
     if (!on && !this.grid.path[k]) return false;
     this.grid.path[k] = on ? 1 : 0;
@@ -210,6 +235,12 @@ class Game {
   }
 
   toast(msg) { this.ui.toast(msg); }
+
+  saveSettings() {
+    this.settings.sfx = this.audio.sfxOn;
+    this.settings.music = this.audio.musicOn;
+    try { localStorage.setItem('hearthvale-settings', JSON.stringify(this.settings)); } catch { /* storage unavailable */ }
+  }
 
   get population() { return this.villagers.list.length; }
   get housing() { return this.buildings.list.reduce((s, b) => s + (b.def.capacity || 0), 0); }
@@ -481,6 +512,7 @@ class Game {
       v: 1, res: this.res, day: this.day, dayT: this.dayT,
       buildings: this.buildings.list.map((b) => ({ id: b.id, type: b.type, i: b.i, j: b.j, rot: b.rot, seed: b.seed, growth: b.crops?.growth })),
       paths: [...this.grid.path].map((p, k) => (p ? k : -1)).filter((k) => k >= 0),
+      bridges: this.bridges.serialize(),
       villagers: this.villagers.serialize(),
     };
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch { /* storage unavailable */ }
@@ -499,6 +531,7 @@ class Game {
       idMap.set(s.id, b);
     }
     for (const k of data.paths) this.setPath(k % 64, Math.floor(k / 64), true, true);
+    for (const k of data.bridges || []) this.bridges.add(k % 64, Math.floor(k / 64), true);
     this.buildings.refreshEntrances();
     for (const s of data.villagers) {
       const home = idMap.get(s.home) || this.villagers.storehouse();
@@ -536,6 +569,13 @@ class Game {
       this.toast(`Good morning! Day ${this.day} ☀️  (breakfast: −${eat} 🍞)`);
     }
     if (prevT < 0.78 && this.dayT >= 0.78) this.toast('The lanterns are lit… 🌙');
+    // chapel bells at dawn and dusk
+    for (const bell of [0.255, 0.755]) {
+      if (prevT < bell && this.dayT >= bell) {
+        const ch = this.buildings.list.find((b) => b.type === 'chapel' && b.anim >= 1);
+        if (ch) this.audio.bell(ch.x, ch.z);
+      }
+    }
 
     this.villagers.update(dt, this.dayT, this.time);
     this.nature.update(dt);
@@ -588,26 +628,31 @@ class Game {
     this.buildings.windowGlow(night);
     if (this.speed > 0) this.fish.update(rawDt * Math.min(this.speed, 2), st);
     this.nature.updateLilies(st);
+    this.bridges.update(rawDt);
+    this._updateSeason();
     this.particles.update(rawDt * (this.speed === 0 ? 0.2 : Math.min(this.speed, 2)));
     this._ambientSparks(rawDt, night);
     this.sparks.update(rawDt);
     this.ripples.update(rawDt);
 
-    // water uniforms
-    const wu = this.water.uniforms;
-    wu.uTime.value = st;
-    wu.uSunDir.value.copy(this.sky.sunDir);
-    wu.uSunColor.value.copy(this.sky.state.sun);
-    wu.uSky.value.copy(this.sky.state.top).lerp(this.sky.state.hor, 0.5);
-    wu.uLight.value = 1 - night * 0.55;
-    wu.fogColor.value.copy(this.sky.fog.color); wu.fogNear.value = this.sky.fog.near; wu.fogFar.value = this.sky.fog.far;
+    // water uniforms (lake + brook)
+    for (const wu of [this.water.uniforms, this.stream.uniforms]) {
+      wu.uTime.value = st;
+      wu.uSunDir.value.copy(this.sky.sunDir);
+      wu.uSunColor.value.copy(this.sky.state.sun);
+      wu.uSky.value.copy(this.sky.state.top).lerp(this.sky.state.hor, 0.5);
+      wu.uLight.value = 1 - night * 0.55;
+      wu.uIce.value = this.season?.ice ?? 0;
+    }
 
     this._updateTool(rawDt);
     if (this.playing) { this.ui.update(rawDt); this.ui.tooltip(this._tip); }
 
     // gentle tilt-shift: more when zoomed in for a miniature feel
     const zoomK = 1 - (this.rig.cur.dist - 9) / 53;
-    const tilt = (0.8 + zoomK * 2.2) / innerHeight;
+    const blur = this.settings.blur;
+    const tilt = blur * (1.0 + zoomK * 2.6) / innerHeight;
+    this.tiltH.enabled = this.tiltV.enabled = blur > 0.01;
     this.tiltH.uniforms.h.value = tilt * innerHeight / innerWidth;
     this.tiltV.uniforms.v.value = tilt;
     this.bloom.strength = 0.22 + night * 0.5;
@@ -638,14 +683,41 @@ class Game {
     }
   }
 
+  _updateSeason() {
+    const st = seasonAt(this.day, this.dayT);
+    if (this.season && this.season.index !== st.index && this.playing) {
+      const msg = { Spring: '🌸 Spring has arrived – blossom on the trees', Summer: '🌻 Summer is here – crops grow quickly', Autumn: '🍂 Autumn – the leaves are turning gold', Winter: '❄️ Winter has come – crops grow slowly, so keep some food by' };
+      this.toast(msg[st.name]);
+      this.audio.chime();
+    }
+    this.season = st;
+    applySeason(st);
+    this.nature.setSeason(st);
+  }
+
   _ambientSparks(dt, night) {
     const t = this.rig.target;
     const r = Math.min(this.rig.cur.dist * 0.6, 18);
-    if (night > 0.4 && Math.random() < dt * 22 * night) {
+    const se = this.season;
+    if (se?.snowfall > 0.02 && Math.random() < dt * 60 * se.snowfall) {
+      for (let n = 0; n < 2; n++) {
+        const x = t.x + (Math.random() - 0.5) * r * 2.4, z = t.z + (Math.random() - 0.5) * r * 2.4;
+        this.particles.spawn({ x, y: t.y + 5 + Math.random() * 3, z, vx: 0.15, vy: -0.7 - Math.random() * 0.3, vz: 0.05, life: 9, size: 0.09 + Math.random() * 0.05, color: new THREE.Color('#ffffff'), alpha: 0.9, drag: 0, wobble: 0.35, fadeIn: 0.1 });
+      }
+    }
+    if (se?.leaves > 0.05 && Math.random() < dt * 8 * se.leaves) {
+      const tree = this.nature.randomTreeNear(t.x, t.z, r);
+      if (tree) {
+        const petals = se.blossom > 0.5;
+        const cols = petals ? ['#ffd1dc', '#ffe4ec', '#fbb6c8'] : ['#e8813a', '#f2b33d', '#d65b2c', '#c9a14a'];
+        this.particles.spawn({ x: tree.x + (Math.random() - 0.5) * 0.8 * tree.s, y: tree.y + (0.8 + Math.random() * 0.5) * tree.s, z: tree.z + (Math.random() - 0.5) * 0.8 * tree.s, vx: 0.2, vy: -0.25, vz: 0.08, life: 4.5, size: 0.07, color: new THREE.Color(cols[Math.floor(Math.random() * cols.length)]), alpha: 1, drag: 0.2, wobble: 0.8, fadeIn: 0.05 });
+      }
+    }
+    if (night > 0.4 && Math.random() < dt * 22 * night * (se?.fireflies ?? 1)) {
       const x = t.x + (Math.random() - 0.5) * r * 2, z = t.z + (Math.random() - 0.5) * r * 2;
       const y = Math.max(terrainHeight(x, z), 0) + 0.2 + Math.random() * 0.8;
       this.sparks.spawn({ x, y, z, vx: (Math.random() - 0.5) * 0.2, vy: (Math.random() - 0.5) * 0.1, vz: (Math.random() - 0.5) * 0.2, life: 3 + Math.random() * 3, size: 0.09, color: new THREE.Color('#e4ff8a'), alpha: 0.9 * night, drag: 0.1, wobble: 0.5, fadeIn: 0.3 });
-    } else if (night < 0.3 && Math.random() < dt * 5) {
+    } else if (night < 0.3 && (se?.snow ?? 0) < 0.3 && Math.random() < dt * 5) {
       const x = t.x + (Math.random() - 0.5) * r * 2, z = t.z + (Math.random() - 0.5) * r * 2;
       const y = Math.max(terrainHeight(x, z), 0) + 0.3 + Math.random() * 1.5;
       this.sparks.spawn({ x, y, z, vx: 0.15, vy: 0.03, vz: 0.05, life: 5, size: 0.05, color: new THREE.Color('#fff1c8'), alpha: 0.35, drag: 0.05, wobble: 0.3, fadeIn: 0.4 });
@@ -716,10 +788,14 @@ class Game {
       } else if (aim) {
         const k = cellIndex(aim.i, aim.j);
         const c = cellCenter(aim.i, aim.j);
-        const valid = this.tool === 'path' ? !this.grid.water[k] && occ === -1 : !!this.grid.path[k];
+        const bridgeSpot = this.grid.stream[k] && !this.grid.bridge[k];
+        const valid = this.tool === 'path' ? (!this.grid.water[k] || bridgeSpot) && occ === -1 : !!this.grid.path[k] || !!this.grid.bridge[k];
+        if (!touch && this.tool === 'path' && bridgeSpot) this._tip = `Build a bridge (${BRIDGE_COST} 🪵)`;
+        if (!touch && this.tool === 'demolish' && this.grid.bridge[k]) this._tip = 'Remove bridge (+1 🪵)';
         this.cellPlate.visible = true;
         this.cellPlate.scale.set(0.96, 0.96, 1);
-        this.cellPlate.position.set(c.x, Math.max(terrainHeight(c.x, c.z), 0) + 0.06, c.z);
+        const plateY = this.grid.stream[k] ? this.bridges.deckY(aim.i, aim.j) - 0.12 : Math.max(terrainHeight(c.x, c.z), 0) + 0.06;
+        this.cellPlate.position.set(c.x, plateY, c.z);
         this.cellPlate.material.color.set(this.tool === 'path' ? (valid ? '#fff3d6' : '#ff9a8a') : (valid ? '#ff8f7a' : '#ffffff'));
         this.cellPlate.material.opacity = valid ? 0.45 : 0.2;
       }
@@ -758,7 +834,9 @@ class Game {
     if (d.workers) {
       const names = b.workers.map((w) => w.name).join(', ');
       sub = `${b.workers.length}/${d.workers} ${JOB_LABEL[b.type].toLowerCase()}s` + (names ? ': ' + names : ' – waiting for a free villager');
-      if (b.type === 'farm') sub += `<br>Wheat ${Math.round(b.crops.growth * 100)}% grown`;
+      if (b.type === 'farm') sub += `<br>Wheat ${Math.round(b.crops.growth * 100)}% grown${(this.season?.crop ?? 1) < 0.5 ? ' (slow in winter)' : ''}`;
+      if (b.type === 'bakery') sub += `<br>Wheat waiting to be baked: ${b.stock}`;
+      if (b.type === 'market') sub += `<br>${b.workers.length ? '+10' : '+4'} cosiness${this.res.food >= 30 ? ' · trading spare food for wood' : ''}`;
     }
     if (b.type === 'storehouse') sub = `🪵 ${this.res.wood} · 🍞 ${this.res.food}`;
     if (d.cosy) sub = `+${d.cosy} cosiness`;

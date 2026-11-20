@@ -89,7 +89,7 @@ body:not(.playing) #toolbar { transform: translate(-50%, 12px); }
 .tool-desc b { display: block; font-size: 14px; margin-bottom: 2px; }
 .tool:hover .tool-desc { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-#hint { position: fixed; left: 16px; bottom: 18px; font-size: 12px; color: rgba(70, 55, 40, 0.75); background: rgba(255, 248, 236, 0.6); padding: 6px 10px; border-radius: 12px; max-width: 220px; transition: opacity 0.6s; }
+#hint { position: fixed; left: 16px; bottom: calc(118px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: rgba(70, 55, 40, 0.75); background: rgba(255, 248, 236, 0.6); padding: 6px 10px; border-radius: 12px; max-width: 220px; transition: opacity 0.6s; }
 
 /* toasts */
 #toasts { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); display: flex; flex-direction: column-reverse; align-items: center; gap: 6px; pointer-events: none; }
@@ -142,7 +142,6 @@ button.big.alt { background: #fff; color: var(--ink); box-shadow: 0 4px 0 #dccbb
 
 /* ---------- shared: settings menu button, action bar, info card ---------- */
 .menu-btn { width: 36px; height: 34px; border-radius: 12px; font-size: 17px; background: rgba(255, 255, 255, 0.55); }
-body:not(.touch) .menu-btn { display: none; }
 button { touch-action: manipulation; -webkit-touch-callout: none; }
 canvas#game { -webkit-touch-callout: none; }
 body.touch .for-mouse, body:not(.touch) .for-touch { display: none; }
@@ -181,6 +180,26 @@ body.touch.playing #infocard.show { display: block; animation: barIn 0.3s ease b
 #infocard b { font-size: 15px; }
 .info-close { position: absolute; top: 8px; right: 12px; color: var(--ink-soft); font-size: 14px; }
 
+/* ---------- settings panel ---------- */
+#settings {
+  display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 230px;
+  flex-direction: column; gap: 4px; padding: 10px 12px;
+  background: var(--cream); box-shadow: var(--shadow); border-radius: 16px; z-index: 6;
+}
+#clock.open #settings { display: flex; animation: barIn2 0.25s cubic-bezier(.2, .9, .3, 1.2) both; }
+@keyframes barIn2 { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+#clock.open .menu-btn { background: #fff; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 36px; font-size: 14px; font-weight: 500; }
+.set-row.col { flex-direction: column; align-items: stretch; gap: 2px; padding-top: 4px; }
+.set-row label { display: flex; justify-content: space-between; }
+.toggle { position: relative; width: 44px; height: 26px; border-radius: 13px; background: #dccfb9; transition: background 0.2s; flex: none; }
+.toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(80, 55, 30, 0.3); transition: transform 0.25s cubic-bezier(.2, .9, .3, 1.3); }
+.toggle.on { background: var(--good); }
+.toggle.on::after { transform: translateX(18px); }
+.toggle:focus-visible, .set-help:focus-visible, #s-blur:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#s-blur { width: 100%; accent-color: var(--accent); height: 28px; }
+.set-help { margin-top: 4px; padding: 8px; border-radius: 12px; background: rgba(255, 255, 255, 0.7); font-size: 14px; font-weight: 500; }
+
 /* ---------- touch layout ---------- */
 body.touch #hint, body.touch .tool .tk, body.touch .tool-desc { display: none; }
 body.touch #stats {
@@ -202,12 +221,6 @@ body.touch .clock-text { min-width: 0; font-size: 14px; line-height: 1.1; }
 body.touch .btns button { width: 36px; height: 34px; }
 body.touch .btns button:hover { background: transparent; opacity: 0.55; }
 body.touch .btns button.on:hover { background: #fff; opacity: 1; }
-body.touch #settings {
-  display: none; position: absolute; top: calc(100% + 6px); right: 0;
-  background: var(--cream); box-shadow: var(--shadow); padding: 4px; border-radius: 14px;
-}
-body.touch #clock.open #settings { display: flex; }
-body.touch #clock.open .menu-btn { background: #fff; }
 
 body.touch #toolbar {
   left: 0; right: 0; bottom: 0; transform: none;
@@ -233,6 +246,17 @@ body.touch #tooltip { display: none; }
   body.touch [data-speed="4"] { display: none; }
 }
 
+/* ---------- medium desktop windows: slimmer tool cards ---------- */
+@media (max-width: 1150px) {
+  body:not(.touch) .tool { width: 64px; height: 78px; }
+  body:not(.touch) .tool .tn { font-size: 11px; }
+  body:not(.touch) .tool .ti { font-size: 25px; }
+}
+@media (max-width: 930px) {
+  body:not(.touch) #toolbar { max-width: calc(100vw - 16px); overflow-x: auto; justify-content: flex-start; }
+  body:not(.touch) .tool { flex: none; }
+  body:not(.touch) .tool-desc { display: none; }
+}
 /* ---------- narrow desktop windows ---------- */
 @media (max-width: 760px) {
   body:not(.touch) #toolbar { max-width: calc(100vw - 16px); overflow-x: auto; justify-content: flex-start; }

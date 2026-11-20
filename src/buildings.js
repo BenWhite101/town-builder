@@ -1,22 +1,27 @@
 import * as THREE from 'three';
 import {
   cottageModel, storehouseModel, farmModel, woodcutterModel, fisheryModel, wellModel, gardenModel, lanternModel,
-  cropGeometry, MAT,
+  bakeryModel, marketModel, chapelModel, cropGeometry, MAT,
 } from './models.js';
 import { GRID, HALF, cellIndex, inBounds, cellCenter, terrainHeight, WATER_LEVEL } from './terrain.js';
 import { mulberry32, easeOutBack, smoothstep } from './noise.js';
+import { seasonal } from './seasons.js';
 
 export const DEFS = {
-  path:       { name: 'Path', icon: '👣', size: 1, cost: 0, key: '1', desc: 'Soft dirt paths. Villagers walk faster on them. Click & drag to paint.' },
+  path:       { name: 'Path', icon: '👣', size: 1, cost: 0, key: '1', desc: 'Soft dirt paths. Villagers walk faster on them. Click & drag to paint. Paint across the brook to build a little bridge (2 🪵 each).' },
   cottage:    { name: 'Cottage', icon: '🏡', size: 2, cost: 10, key: '2', capacity: 3, model: cottageModel, desc: 'A snug home for up to 3 villagers. New families move in over time.' },
-  farm:       { name: 'Wheat Farm', icon: '🌾', size: 3, cost: 8, key: '3', workers: 2, walkable: true, model: farmModel, desc: 'Two farmers tend golden wheat and bring bread to the storehouse.' },
+  farm:       { name: 'Wheat Farm', icon: '🌾', size: 3, cost: 8, key: '3', workers: 2, walkable: true, model: farmModel, desc: 'Two farmers grow wheat. It becomes food at the storehouse – or much more food at a bakery.' },
   woodcutter: { name: 'Woodcutter', icon: '🪓', size: 2, cost: 5, key: '4', workers: 1, model: woodcutterModel, desc: 'Fells nearby trees for wood. Stumps slowly grow back.' },
-  fishery:    { name: 'Fishing Hut', icon: '🎣', size: 2, cost: 8, key: '5', workers: 1, needsWater: true, model: fisheryModel, desc: 'A fisher casts a line from the shore. Must be built beside the lake.' },
-  well:       { name: 'Well', icon: '🪣', size: 1, cost: 4, key: '6', cosy: 8, model: wellModel, desc: 'Villagers love to gather here. Adds cosiness.' },
-  garden:     { name: 'Flower Bed', icon: '🌷', size: 1, cost: 1, key: '7', cosy: 3, model: gardenModel, desc: 'A little patch of flowers. Adds cosiness.' },
-  lantern:    { name: 'Lantern', icon: '🏮', size: 1, cost: 2, key: '8', cosy: 2, model: lanternModel, desc: 'Glows warmly through the night. Adds cosiness.' },
+  fishery:    { name: 'Fishing Hut', icon: '🎣', size: 2, cost: 8, key: '5', workers: 1, needsWater: true, model: fisheryModel, desc: 'A fisher casts a line from the shore. Build it beside the lake or the brook.' },
+  bakery:     { name: 'Bakery', icon: '🥖', size: 2, cost: 12, key: '6', workers: 1, cosy: 3, model: bakeryModel, desc: 'Farmers bring their wheat here and the baker turns every 5 wheat into 9 bread.' },
+  market:     { name: 'Market', icon: '🧺', size: 3, cost: 14, key: '7', workers: 1, walkable: true, cosy: 4, cosyStaffed: 10, model: marketModel, desc: 'Villagers love a browse. The stallholder trades spare food with passing merchants for wood.' },
+  chapel:     { name: 'Chapel', icon: '🔔', size: 2, cost: 16, key: '8', cosy: 14, model: chapelModel, desc: 'Its bell rings at dawn and dusk, and villagers gather there in the evening. Very cosy.' },
+  well:       { name: 'Well', icon: '🪣', size: 1, cost: 4, key: '9', cosy: 8, model: wellModel, desc: 'Villagers love to gather here. Adds cosiness.' },
+  garden:     { name: 'Flower Bed', icon: '🌷', size: 1, cost: 1, key: '0', cosy: 3, model: gardenModel, desc: 'A little patch of flowers. Adds cosiness.' },
+  lantern:    { name: 'Lantern', icon: '🏮', size: 1, cost: 2, key: 'l', cosy: 2, model: lanternModel, desc: 'Glows warmly through the night. Adds cosiness.' },
   storehouse: { name: 'Storehouse', icon: '🏠', size: 3, cost: 0, capacity: 3, model: storehouseModel, desc: 'The heart of the village. Goods are brought here.', fixed: true },
 };
+export const TOOL_ORDER = ['path', 'cottage', 'farm', 'woodcutter', 'fishery', 'bakery', 'market', 'chapel', 'well', 'garden', 'lantern'];
 
 let nextId = 1;
 
@@ -27,7 +32,7 @@ export class Buildings {
     this.list = [];
     this.byId = new Map();
     this.cropGeo = cropGeometry();
-    this.cropMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.85 });
+    this.cropMat = seasonal(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.85 }), { snow: 0.7 });
     this.ghostMat = new THREE.MeshStandardMaterial({ color: '#bff0a8', transparent: true, opacity: 0.55, roughness: 0.6, emissive: '#7fd36b', emissiveIntensity: 0.25, depthWrite: false });
     this.ghostBad = new THREE.Color('#ff9a8a');
     this.ghostGood = new THREE.Color('#bff0a8');
@@ -144,6 +149,7 @@ export class Buildings {
       b.glow = glow;
     }
     if (type === 'farm') this._setupFarm(b);
+    if (type === 'bakery') b.stock = 0;
     let wood = 0;
     for (const [ci, cj] of cells) {
       const k = cellIndex(ci, cj);
@@ -287,9 +293,11 @@ export class Buildings {
     }
   }
 
+  cosyOf(b) { return b.def.cosyStaffed && b.workers.length ? b.def.cosyStaffed : (b.def.cosy || 0); }
+
   get cosy() {
     let c = 0;
-    for (const b of this.list) c += b.def.cosy || 0;
+    for (const b of this.list) c += this.cosyOf(b);
     return c;
   }
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { seasonal } from './seasons.js';
 
 // ---- shared materials -------------------------------------------------------
 const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, ...extra });
@@ -38,6 +39,9 @@ export const MAT = {
   lilac: std('#c4b0ee', { emissive: new THREE.Color('#c4b0ee'), emissiveIntensity: 0.05 }),
   whiteFlower: std('#fffaf2', { emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0.05 }),
 };
+// snow settles on roofs, walls' tops, stone and wood (but never on glowing windows)
+for (const [k, m] of Object.entries(MAT)) if (!['window', 'glow', 'water'].includes(k)) seasonal(m, { grass: k === 'leaf' });
+
 export const ROOFS = [MAT.roofRed, MAT.roofTerracotta, MAT.roofBlue, MAT.roofSlate, MAT.roofMoss];
 
 // ---- geometry helpers -----------------------------------------------------------
@@ -383,6 +387,7 @@ export const VILLAGER_GEO = {
   arm: (() => { const g = prep(new THREE.CapsuleGeometry(0.02, 0.07, 2, 6)); g.translate(0, -0.05, 0); return g; })(),
   hair: (() => { const g = prep(new THREE.SphereGeometry(0.073, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55)); g.rotateX(-0.25); return g; })(),
   strawHat: mergeGeometries([prep(new THREE.CylinderGeometry(0.13, 0.13, 0.015, 14)), (() => { const c = prep(new THREE.CylinderGeometry(0.05, 0.065, 0.06, 12)); c.translate(0, 0.035, 0); return c; })()]),
+  bakerHat: (() => { const g = prep(new THREE.CylinderGeometry(0.085, 0.06, 0.1, 12)); g.translate(0, 0.04, 0); const t = prep(new THREE.IcosahedronGeometry(0.08, 1)); t.scale(1, 0.6, 1); t.translate(0, 0.1, 0); return mergeGeometries([g, t]); })(),
   hood: (() => { const g = prep(new THREE.ConeGeometry(0.085, 0.16, 10)); g.translate(0, 0.07, -0.01); return g; })(),
   beanie: (() => { const g = prep(new THREE.SphereGeometry(0.076, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5)); return g; })(),
   log: (() => { const g = prep(new THREE.CylinderGeometry(0.04, 0.04, 0.26, 8)); g.rotateZ(Math.PI / 2); return g; })(),
@@ -392,3 +397,138 @@ export const VILLAGER_GEO = {
   rod: (() => { const c = prep(new THREE.CylinderGeometry(0.005, 0.009, 0.6, 4)); c.translate(0, 0.3, 0); return c; })(),
   hoe: mergeGeometries([(() => { const c = prep(new THREE.CylinderGeometry(0.009, 0.009, 0.28, 5)); c.translate(0, -0.12, 0); return c; })(), (() => { const c = prep(new THREE.BoxGeometry(0.05, 0.012, 0.04)); c.translate(0, -0.26, 0.02); return c; })()]),
 };
+
+// ---- newer buildings ---------------------------------------------------------------
+export function bakeryModel(rng) {
+  const b = new ModelBuilder();
+  const W = 1.2, D = 0.95, H = 0.74;
+  foundation(b, W + 0.16, D + 0.16);
+  b.add(G.box(W, H, D, 0.05), MAT.plasterWarm, 0, 0.22 + H / 2, 0);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.box(0.07, H, 0.07, 0.02), MAT.timber, sx * (W / 2 - 0.02), 0.22 + H / 2, sz * (D / 2 - 0.02));
+  b.add(G.box(W + 0.02, 0.06, D + 0.02, 0.02), MAT.timber, 0, 0.22 + H - 0.03, 0);
+  b.add(G.roof(D + 0.34, 0.66, W + 0.3, 0.06), MAT.roofTerracotta, 0, 0.22 + H - 0.02, 0, { ry: Math.PI / 2 });
+  b.add(G.roof(D - 0.04, 0.55, W - 0.02, 0.03), MAT.plasterWarm, 0, 0.22 + H, 0, { ry: Math.PI / 2 });
+  // big round bread oven on the side, with its own chimney
+  const ox = W / 2 + 0.26;
+  b.add(G.cyl(0.32, 0.34, 0.24, 14), MAT.stone, ox, 0.12, -0.05);
+  b.add(G.sphere(0.32, 2), MAT.stone, ox, 0.26, -0.05, { sy: 0.8 });
+  b.add(G.box(0.16, 0.14, 0.08, 0.04), MAT.glow, ox + 0.18, 0.3, 0.2, { ry: 0.6 });
+  b.add(G.cyl(0.07, 0.08, 0.5, 8), MAT.stoneDark, ox - 0.05, 0.6, -0.12);
+  // door, windows, sign with a loaf
+  b.add(G.box(0.26, 0.42, 0.06, 0.04), MAT.door, -0.2, 0.22 + 0.21, D / 2 + 0.01);
+  b.add(G.box(0.36, 0.06, 0.16, 0.02), MAT.stone, -0.2, 0.2, D / 2 + 0.1);
+  windowAt(b, 0.28, 0.22 + 0.42, D / 2 + 0.01, 0, 0.3, 0.24);
+  windowAt(b, -0.3, 0.22 + 0.45, -D / 2 - 0.01, Math.PI);
+  windowAt(b, 0.3, 0.22 + 0.45, -D / 2 - 0.01, Math.PI);
+  flowerBox(b, 0.28, 0.22 + 0.26, D / 2 + 0.07, 0, 0.34, rng);
+  b.add(G.box(0.03, 0.03, 0.26, 0.01), MAT.timber, -0.5, 0.22 + 0.66, D / 2 + 0.12);
+  b.add(G.box(0.2, 0.16, 0.03, 0.02), MAT.woodLight, -0.5, 0.22 + 0.55, D / 2 + 0.24);
+  b.add(G.sphere(0.055, 1), MAT.hay, -0.5, 0.22 + 0.55, D / 2 + 0.26, { sx: 1.5, sz: 0.6 });
+  // flour sacks & a wood pile for the oven
+  b.add(G.sphere(0.1, 1), MAT.net, -W / 2 - 0.1, 0.1, 0.25, { sy: 1.2 });
+  b.add(G.sphere(0.09, 1), MAT.net, -W / 2 - 0.12, 0.09, 0.05, { sy: 1.1 });
+  logPile(b, ox + 0.05, 0.02, 0.42, 0);
+  return { builder: b, chimney: new THREE.Vector3(ox - 0.05, 0.9, -0.12) };
+}
+
+export function marketModel(rng) {
+  const b = new ModelBuilder();
+  // flagstone square
+  b.add(G.box(2.86, 0.12, 2.86, 0.06), MAT.stone, 0, 0.0, 0);
+  for (let n = 0; n < 20; n++) {
+    const x = (rng() - 0.5) * 2.5, z = (rng() - 0.5) * 2.5;
+    b.add(G.box(0.3 + rng() * 0.2, 0.03, 0.25 + rng() * 0.2, 0.02), rng() < 0.5 ? MAT.stoneDark : MAT.plasterWarm, x, 0.065, z, { ry: rng() });
+  }
+  const awnings = [MAT.cloth, MAT.clothBlue, MAT.roofMoss];
+  const produce = [MAT.cloth, MAT.leaf, MAT.roofTerracotta, MAT.yellow, MAT.hay];
+  const stall = (x, z, ry, aw) => {
+    const c = Math.cos(ry), s = Math.sin(ry);
+    const P = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+    // counter
+    let [px, pz] = P(0, 0.1);
+    b.add(G.box(0.9, 0.3, 0.36, 0.03), MAT.woodLight, px, 0.22, pz, { ry });
+    // posts
+    for (const [lx, lz] of [[-0.42, -0.1], [0.42, -0.1], [-0.42, 0.32], [0.42, 0.32]]) {
+      [px, pz] = P(lx, lz);
+      b.add(G.box(0.05, lz < 0 ? 0.92 : 0.75, 0.05, 0.015), MAT.timber, px, lz < 0 ? 0.52 : 0.44, pz);
+    }
+    // striped awning sloping toward the customers
+    for (let k = 0; k < 4; k++) {
+      [px, pz] = P(-0.36 + k * 0.24, 0.12);
+      b.add(G.box(0.24, 0.04, 0.6, 0.015), k % 2 ? MAT.white : aw, px, 0.9, pz, { ry, rx: 0 }, );
+    }
+    [px, pz] = P(0, 0.42);
+    b.add(G.box(0.98, 0.1, 0.03, 0.01), aw, px, 0.84, pz, { ry });
+    // produce
+    for (let k = 0; k < 6; k++) {
+      [px, pz] = P(-0.33 + k * 0.13, 0.12 + (k % 2) * 0.08);
+      b.add(G.sphere(0.055, 1), produce[Math.floor(rng() * produce.length)], px, 0.42, pz);
+    }
+  };
+  stall(-0.7, -0.75, 0, awnings[0]);
+  stall(0.75, -0.6, -Math.PI / 2 + 0.3, awnings[1]);
+  stall(-0.85, 0.65, Math.PI / 2 - 0.2, awnings[2]);
+  // crates, barrels, a pumpkin pile
+  crate(b, 0.9, 0.06, 0.85, 0.3, 0.2);
+  crate(b, 1.1, 0.06, 0.7, -0.2, 0.17);
+  barrel(b, 0.6, 0.06, 1.05);
+  for (let k = 0; k < 4; k++) b.add(G.sphere(0.09, 1), MAT.roofTerracotta, 0.2 + k * 0.12, 0.13, 1.1 - (k % 2) * 0.1, { sy: 0.75 });
+  // bunting between two poles
+  b.add(G.cyl(0.025, 0.03, 1.2, 6), MAT.woodDark, -1.3, 0.6, -1.3);
+  b.add(G.cyl(0.025, 0.03, 1.2, 6), MAT.woodDark, 1.3, 0.6, 1.3);
+  const flags = [MAT.cloth, MAT.yellow, MAT.clothBlue, MAT.pink, MAT.leaf];
+  for (let k = 1; k < 12; k++) {
+    const t = k / 12;
+    const x = -1.3 + 2.6 * t, z = -1.3 + 2.6 * t, y = 1.12 - Math.sin(t * Math.PI) * 0.22;
+    b.add(G.cone(0.05, 0.1, 3), flags[k % flags.length], x, y, z, { rx: Math.PI, ry: Math.PI / 4 });
+  }
+  return { builder: b };
+}
+
+export function chapelModel(rng) {
+  const b = new ModelBuilder();
+  const W = 0.95, D = 1.4, H = 0.9;
+  foundation(b, W + 0.18, D + 0.18, 0.2);
+  // nave (ridge runs front to back)
+  b.add(G.box(W, H, D, 0.05), MAT.stone, 0, 0.2 + H / 2, 0);
+  b.add(G.roof(W + 0.3, 0.75, D + 0.24, 0.06), MAT.roofSlate, 0, 0.2 + H - 0.02, 0);
+  // bell tower at the front
+  const tz = D / 2 - 0.1;
+  b.add(G.box(0.5, 1.6, 0.5, 0.04), MAT.stone, 0, 0.2 + 0.8, tz);
+  b.add(G.box(0.54, 0.06, 0.54, 0.02), MAT.stoneDark, 0, 0.2 + 1.6, tz);
+  // open belfry with a little bell
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.box(0.07, 0.34, 0.07, 0.02), MAT.stone, sx * 0.2, 0.2 + 1.8, tz + sz * 0.2);
+  b.add(G.cone(0.08, 0.12, 10), MAT.yellow, 0, 0.2 + 1.78, tz);
+  b.add(G.box(0.52, 0.06, 0.52, 0.02), MAT.stoneDark, 0, 0.2 + 1.98, tz);
+  b.add(G.pyramid(0.42, 0.62), MAT.roofSlate, 0, 0.2 + 2.0, tz);
+  b.add(G.cyl(0.012, 0.012, 0.18, 4), MAT.metal, 0, 0.2 + 2.7, tz);
+  b.add(G.box(0.1, 0.012, 0.012, 0.004), MAT.metal, 0, 0.2 + 2.74, tz);
+  // arched door & round window
+  b.add(G.box(0.24, 0.34, 0.06, 0.03), MAT.door, 0, 0.2 + 0.17, tz + 0.25);
+  b.add(G.cyl(0.12, 0.12, 0.06, 12), MAT.door, 0, 0.2 + 0.34, tz + 0.25, { rx: Math.PI / 2 });
+  b.add(G.box(0.36, 0.05, 0.16, 0.02), MAT.stone, 0, 0.18, tz + 0.34);
+  b.add(G.cyl(0.11, 0.11, 0.05, 14), MAT.timber, 0, 0.2 + 1.1, tz + 0.25, { rx: Math.PI / 2 });
+  b.add(G.cyl(0.085, 0.085, 0.05, 14), MAT.window, 0, 0.2 + 1.1, tz + 0.26, { rx: Math.PI / 2 });
+  // tall side windows
+  for (const sx of [-1, 1]) for (const z of [-0.35, 0.05]) windowAt(b, sx * (W / 2 + 0.01), 0.2 + 0.5, z, sx * Math.PI / 2, 0.14, 0.34);
+  // little graveyard-free garden: two shrubs and a bench
+  b.add(G.sphere(0.13, 1), MAT.leaf, W / 2 + 0.2, 0.12, D / 2 - 0.05);
+  b.add(G.sphere(0.11, 1), MAT.leaf, -W / 2 - 0.18, 0.11, D / 2 - 0.1);
+  b.add(G.box(0.34, 0.04, 0.1, 0.01), MAT.woodLight, -W / 2 - 0.2, 0.14, -0.3, { ry: Math.PI / 2 });
+  return { builder: b };
+}
+
+// one tile of a wooden footbridge; rails on the sides that face up/down stream
+export function bridgeModel({ railW = true, railE = true } = {}) {
+  const b = new ModelBuilder();
+  b.add(G.box(1.0, 0.07, 0.94, 0.02), MAT.woodLight, 0, 0, 0);
+  for (let k = 0; k < 5; k++) b.add(G.box(0.98, 0.075, 0.012, 0.004), MAT.woodDark, 0, 0.002, -0.4 + k * 0.2);
+  for (const sx of [-0.3, 0.3]) b.add(G.cyl(0.05, 0.05, 1.02, 8), MAT.log, sx, -0.07, 0, { rx: Math.PI / 2 });
+  for (const [on, sx] of [[railW, -1], [railE, 1]]) {
+    if (!on) continue;
+    for (const sz of [-0.42, 0.42]) b.add(G.box(0.05, 0.3, 0.05, 0.015), MAT.timber, sx * 0.46, 0.15, sz);
+    b.add(G.box(0.04, 0.04, 0.96, 0.012), MAT.timber, sx * 0.46, 0.29, 0);
+    b.add(G.box(0.03, 0.03, 0.9, 0.01), MAT.timber, sx * 0.46, 0.17, 0);
+  }
+  return b;
+}

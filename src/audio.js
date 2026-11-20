@@ -107,6 +107,19 @@ export class Audio {
   rustle(x, z) { const v = this._vol(x, z); if (v < 0.02) return; this._noise({ dur: 0.4, vol: 0.08 * v, freq: 3000, q: 0.6, attack: 0.08 }); }
   splash(x, z, s = 1) { const v = this._vol(x, z) * s; if (v < 0.02) return; this._noise({ dur: 0.35, vol: 0.14 * v, freq: 2200, q: 0.7, attack: 0.01 }); this._tone(700, { dur: 0.12, vol: 0.05 * v, slide: 0.4 }); }
   plip(x, z) { const v = this._vol(x, z); if (v < 0.02) return; this._tone(1200, { dur: 0.1, vol: 0.07 * v, slide: 0.5 }); }
+  bell(x, z) {
+    const v = Math.max(0.35, this._vol(x, z));
+    // a soft church bell: a few inharmonic partials with long tails, struck three times
+    for (let s = 0; s < 3; s++) {
+      const at = s * 1.6;
+      for (const [m, g, d] of [[1, 0.05, 4], [2.0, 0.025, 2.6], [2.4, 0.02, 2.2], [3.0, 0.012, 1.6], [4.2, 0.008, 1.0]]) {
+        const out = this.ctx ? this.ctx.createGain() : null;
+        if (!out) return;
+        out.gain.value = 1; out.connect(this.sfx); out.connect(this.verb);
+        this._tone(392 * m, { dur: d, vol: g * v, at, out, attack: 0.004 });
+      }
+    }
+  }
   coin() { this._tone(1046, { dur: 0.12, vol: 0.05, type: 'triangle' }); this._tone(1568, { dur: 0.2, vol: 0.04, type: 'triangle', at: 0.07 }); }
   chime() { [784, 988, 1175, 1568].forEach((f, i) => this._tone(f, { dur: 0.6, vol: 0.05, type: 'sine', at: i * 0.09, out: this.music.gain.value > 0 ? this.sfx : this.sfx })); }
 

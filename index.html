@@ -35,11 +35,15 @@
       <button data-speed="4" title="Faster">⏭</button>
     </div>
     <button id="b-menu" class="menu-btn" title="Settings" aria-label="Settings">⚙️</button>
-    <div class="btns" id="settings">
-      <button id="b-sfx" class="on" title="Sound effects">🔊</button>
-      <button id="b-music" class="on" title="Music">🎵</button>
-      <button id="b-gfx" class="on" title="Graphics quality">✨</button>
-      <button id="b-help" title="Help">❔</button>
+    <div id="settings" class="settings-panel" role="dialog" aria-label="Settings">
+      <div class="set-row"><span>Sound effects</span><button id="b-sfx" class="toggle on" aria-pressed="true" aria-label="Sound effects"></button></div>
+      <div class="set-row"><span>Music</span><button id="b-music" class="toggle on" aria-pressed="true" aria-label="Music"></button></div>
+      <div class="set-row"><span>Pretty graphics</span><button id="b-gfx" class="toggle on" aria-pressed="true" aria-label="Pretty graphics"></button></div>
+      <div class="set-row col">
+        <label for="s-blur"><span>Edge blur</span><span id="s-blur-val" class="small">40%</span></label>
+        <input id="s-blur" type="range" min="0" max="100" step="5" value="40" />
+      </div>
+      <button id="b-help" class="set-help">❔ How to play</button>
     </div>
   </div>
 
@@ -64,11 +68,11 @@
   <div id="help" class="panel modal">
     <h2>How to play</h2>
     <ul class="for-mouse">
-      <li><b>Build</b> – pick something from the bar at the bottom (or press <kbd>1</kbd>–<kbd>8</kbd>) and click on the meadow.</li>
+      <li><b>Build</b> – pick something from the bar at the bottom (or press the number keys, <kbd>L</kbd> for lanterns) and click on the meadow.</li>
       <li><b>Rotate</b> – <kbd>R</kbd> or middle-click while placing.</li>
       <li><b>Move</b> – drag with the left mouse, or <kbd>W A S D</kbd>.</li>
       <li><b>Orbit</b> – right-drag, or <kbd>Q</kbd> / <kbd>E</kbd>. <b>Zoom</b> – scroll.</li>
-      <li><b>Paths</b> – click and drag to paint.</li>
+      <li><b>Paths</b> – click and drag to paint. Paint across the brook to build a bridge.</li>
       <li><b>Demolish</b> – <kbd>X</kbd> then click a building, or drag over paths. You get half the wood back.</li>
       <li><kbd>Esc</kbd> or right-click to put the tool down. <kbd>Space</kbd> pauses.</li>
     </ul>
@@ -76,11 +80,12 @@
       <li><b>Look around</b> – drag with one finger. Pinch to zoom, twist two fingers to turn.</li>
       <li><b>Build</b> – pick something from the bar, drag the see-through building (or tap the meadow) to move it, then press <b>Build</b>.</li>
       <li><b>Rotate</b> – the ↻ button.</li>
-      <li><b>Paths</b> – drag one finger to paint, or tap for a single tile. Use two fingers to move the view while painting.</li>
+      <li><b>Paths</b> – drag one finger to paint, or tap for a single tile. Paint across the brook to build a bridge. Use two fingers to move the view while painting.</li>
       <li><b>Demolish</b> – 🧹, then tap a building and confirm, or drag over paths to erase them.</li>
       <li>Tap a villager or building to see what it's up to.</li>
     </ul>
-    <p>Villagers find jobs on their own. Woodcutters fell trees, farmers grow wheat, fishers catch fish in the lake. Build cottages so new families can move in – they come faster when the village is cosy.</p>
+    <p>Villagers find jobs on their own. Woodcutters fell trees, farmers grow wheat, fishers catch fish, and a baker turns wheat into far more bread. Build cottages so new families can move in – they come faster when the village is cosy.</p>
+    <p>The seasons turn every few days. Crops grow slowly in winter, so stock up on food in autumn.</p>
     <p class="small">Your village saves itself automatically.</p>
     <button class="big" id="help-close">Lovely</button>
   </div>
