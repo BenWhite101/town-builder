@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Hearthvale</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- top-left: village stats -->
+  <div id="stats" class="panel hidden-ui">
+    <div class="stat" title="Wood"><span class="ico">🪵</span><span id="s-wood">0</span></div>
+    <div class="stat" title="Food"><span class="ico">🍞</span><span id="s-food">0</span></div>
+    <div class="stat" title="Villagers / homes"><span class="ico">🧑‍🌾</span><span id="s-pop">0</span></div>
+    <div class="stat cosy" title="Cosiness – wells, flowers, lanterns, paths and full bellies make villagers happy (and families move in faster)">
+      <span class="ico">💛</span>
+      <div class="bar"><div id="s-cosy-bar"></div></div>
+      <span id="s-cosy" class="small">Cosy</span>
+    </div>
+  </div>
+
+  <!-- top-right: time & settings -->
+  <div id="clock" class="panel hidden-ui">
+    <div class="dial"><div id="dial-hand"></div><span id="dial-ico">☀️</span></div>
+    <div class="clock-text"><div id="c-day">Day 1</div><div id="c-time" class="small">Morning</div></div>
+    <div class="btns">
+      <button data-speed="0" title="Pause (Space)">⏸</button>
+      <button data-speed="1" class="on" title="Normal speed">▶</button>
+      <button data-speed="2" title="Fast">⏩</button>
+      <button data-speed="4" title="Faster">⏭</button>
+    </div>
+    <div class="btns">
+      <button id="b-sfx" class="on" title="Sound effects">🔊</button>
+      <button id="b-music" class="on" title="Music">🎵</button>
+      <button id="b-gfx" class="on" title="Graphics quality">✨</button>
+      <button id="b-help" title="Help">❔</button>
+    </div>
+  </div>
+
+  <!-- bottom: build toolbar -->
+  <div id="toolbar" class="panel hidden-ui"></div>
+  <div id="hint" class="hidden-ui"></div>
+  <div id="toasts"></div>
+  <div id="tooltip"></div>
+  <div id="floaters"></div>
+
+  <div id="help" class="panel modal">
+    <h2>How to play</h2>
+    <ul>
+      <li><b>Build</b> – pick something from the bar at the bottom (or press <kbd>1</kbd>–<kbd>8</kbd>) and click on the meadow.</li>
+      <li><b>Rotate</b> – <kbd>R</kbd> or mouse wheel click while placing.</li>
+      <li><b>Move</b> – <kbd>W A S D</kbd>, or drag with the left mouse when nothing is selected.</li>
+      <li><b>Orbit</b> – right-drag, or <kbd>Q</kbd> / <kbd>E</kbd>. <b>Zoom</b> – scroll.</li>
+      <li><b>Demolish</b> – <kbd>X</kbd> then click. You get half the wood back.</li>
+      <li><kbd>Esc</kbd> or right-click to put the tool down. <kbd>Space</kbd> pauses.</li>
+    </ul>
+    <p>Villagers find jobs on their own. Woodcutters fell trees, farmers grow wheat, fishers catch fish in the lake. Build cottages so new families can move in – they come faster when the village is cosy.</p>
+    <p class="small">Your village saves itself automatically.</p>
+    <button class="big" id="help-close">Lovely</button>
+  </div>
+
+  <div id="intro">
+    <div class="intro-card">
+      <div class="logo">Hearthvale</div>
+      <div class="sub">a cosy little village by the lake</div>
+      <div class="intro-btns">
+        <button class="big" id="b-start">Begin</button>
+        <button class="big alt" id="b-new" style="display:none">New village</button>
+      </div>
+      <div class="small dim">Best with sound on 🎧</div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
