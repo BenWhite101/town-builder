@@ -120,6 +120,30 @@ export class Audio {
       }
     }
   }
+  // farmyard voices
+  animal(kind, x, z) {
+    const v = this._vol(x, z);
+    if (!this.ctx || v < 0.05) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const voice = (type, f0, f1, dur, vol, fq, q, vib = 0) => {
+      const o = ctx.createOscillator(); o.type = type;
+      o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      if (vib) { const l = ctx.createOscillator(); l.frequency.value = vib; const lg = ctx.createGain(); lg.gain.value = f0 * 0.06; l.connect(lg).connect(o.frequency); l.start(t); l.stop(t + dur + 0.1); }
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fq; f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol * v, t + Math.min(0.08, dur * 0.3));
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(f).connect(g).connect(this.sfx);
+      o.start(t); o.stop(t + dur + 0.05);
+    };
+    if (kind === 'sheep') voice('sawtooth', 330 + Math.random() * 80, 290, 0.7, 0.06, 1000, 1.2, 17);
+    else if (kind === 'cow') voice('sawtooth', 120, 105, 1.3, 0.09, 500, 0.8, 4);
+    else if (kind === 'chicken') { for (let i = 0; i < 3; i++) this._tone(600 + Math.random() * 200, { dur: 0.06, vol: 0.03 * v, type: 'square', at: i * 0.11 }); }
+    else if (kind === 'duck') { for (let i = 0; i < 2; i++) this._noise({ dur: 0.1, vol: 0.06 * v, freq: 1300, q: 4, at: i * 0.16 }); voice('sawtooth', 260, 230, 0.12, 0.05, 1200, 3); }
+    else if (kind === 'duckling') { for (let i = 0; i < 3; i++) this._tone(2600 + Math.random() * 500, { dur: 0.05, vol: 0.02 * v, slide: 1.15, at: i * 0.12 }); }
+  }
+
   coin() { this._tone(1046, { dur: 0.12, vol: 0.05, type: 'triangle' }); this._tone(1568, { dur: 0.2, vol: 0.04, type: 'triangle', at: 0.07 }); }
   chime() { [784, 988, 1175, 1568].forEach((f, i) => this._tone(f, { dur: 0.6, vol: 0.05, type: 'sine', at: i * 0.09, out: this.music.gain.value > 0 ? this.sfx : this.sfx })); }
 

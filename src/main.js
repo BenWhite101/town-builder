@@ -22,6 +22,7 @@ import { Audio } from './audio.js';
 import { damp } from './noise.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
+import { Animals } from './animals.js';
 import { Bridges, BRIDGE_COST } from './bridges.js';
 import { seasonAt, applySeason } from './seasons.js';
 
@@ -86,6 +87,9 @@ class Game {
     this.bridges = new Bridges(this.scene, this.grid);
     this.buildings = new Buildings(this.scene, this.grid, this.terrain, this.nature, this.particles, this.audio);
     this.villagers = new Villagers(this);
+    this.animals = new Animals(this);
+    this.buildings.onPlace = (b) => this.animals.herd(b);
+    this.buildings.onRemove = (b) => this.animals.release(b);
     this.rig = new CameraRig(this.camera, this.canvas);
 
     this.res = { wood: 30, food: 12 };
@@ -225,6 +229,12 @@ class Game {
     return true;
   }
 
+  addWool(at) {
+    this.ui.floater(at, '+ warm wool 🧶');
+    this.audio.coin();
+    if (!this._woolToast) { this._woolToast = true; this.toast('Warm woolly jumpers for everyone – winter will feel cosy 🧶'); }
+  }
+
   addResource(kind, n, at) {
     this.res[kind] += n;
     this.ui.bump(kind);
@@ -252,6 +262,10 @@ class Game {
     let c = 35 + Math.min(deco, 40) + Math.min(this.pathCount, 50) * 0.3 + (this.res.food > 0 ? 8 : -12) - Math.max(0, homeless - 3) * 4;
     const pop = Math.max(1, this.population);
     c -= Math.max(0, pop - 6) * 0.6; // bigger villages need more love
+    // winter is chilly… unless a shepherd keeps everyone in woolly jumpers
+    const snow = this.season?.snow ?? 0;
+    const wool = this.buildings.list.some((b) => b.type === 'sheep' && b.workers.length);
+    c -= snow * (wool ? 0 : 10);
     return Math.max(0, Math.min(100, c));
   }
 
@@ -293,8 +307,6 @@ class Game {
       if (this.tool && DEFS[this.tool] && this.tool !== 'path' && !this.placeAt) this.placeAt = this._startPlaceCell();
     } else {
       this.demolishSel = null;
-      this.ui?.info(null);
-      this.infoTarget = null;
     }
     this.ui?.refresh(true);
   }
@@ -307,7 +319,6 @@ class Game {
     this.tool = t;
     this.demolishSel = null;
     this.infoTarget = null;
-    this.ui?.info(null);
     if (this.ghost) { this.scene.remove(this.ghost); this.ghost = null; }
     this.placeAt = null;
     if (t && DEFS[t] && t !== 'path') {
@@ -442,6 +453,35 @@ class Game {
     this.mouse.x = x; this.mouse.y = y;
     this._updateHover();
     if (this.tool && DEFS[this.tool] && this.tool !== 'path') this.tryPlace(this.hover);
+    else if (!this.tool) this.selectAt(x, y, 24);
+  }
+
+  // click/tap with no tool: show the info card for whoever/whatever is there
+  selectAt(x, y, radius) {
+    const v = this.villagers.pick(this.camera, x, y, innerWidth, innerHeight, radius);
+    if (v) { this.infoTarget = { v }; this.audio.click(); return; }
+    const h = this.screenHit(x, y);
+    if (h && inBounds(h.i, h.j)) {
+      const occ = this.grid.occ[cellIndex(h.i, h.j)];
+      const b = occ !== -1 ? this.buildings.byId.get(occ) : null;
+      if (b) { this.infoTarget = { b }; this.audio.click(); return; }
+    }
+    this.infoTarget = null;
+  }
+
+  // camera gently follows a villager around until you move the view yourself
+  setFollow(v) {
+    this.follow = v;
+    if (v) { this.toast(`Following ${v.name} – move the view to stop`); this.rig.goal.dist = Math.min(this.rig.goal.dist, 16); }
+  }
+
+  mood(v) {
+    if (v.inside) return 'sleepy 😴';
+    if (this.res.food <= 0) return 'a bit hungry 😟';
+    const snow = this.season?.snow ?? 0;
+    if (snow > 0.6 && !this.buildings.list.some((b) => b.type === 'sheep' && b.workers.length)) return 'chilly 🥶';
+    const c = this.cosiness();
+    return c > 70 ? 'very happy 😊' : c > 45 ? 'content 🙂' : 'a little glum 😐';
   }
 
   // touch tap (finger didn't move)
@@ -465,14 +505,7 @@ class Game {
       return;
     }
     // no tool: tell me about what I tapped
-    const v = this.villagers.pick(this.camera, x, y, innerWidth, innerHeight, 38);
-    if (v) { this.infoTarget = { v }; this.audio.click(); return; }
-    if (ok) {
-      const occ = this.grid.occ[cellIndex(h.i, h.j)];
-      const b = occ !== -1 ? this.buildings.byId.get(occ) : null;
-      if (b) { this.infoTarget = { b }; this.audio.click(); return; }
-    }
-    this.infoTarget = null;
+    this.selectAt(x, y, 38);
   }
 
   // touch action bar buttons
@@ -600,6 +633,7 @@ class Game {
           v.appear = 0;
           for (let n = 0; n < 8; n++) this.particles.spawn({ x: e.x, y: terrainHeight(e.x, e.z) + 0.5, z: e.z, vx: (Math.random() - 0.5) * 0.8, vy: 0.6 + Math.random() * 0.5, vz: (Math.random() - 0.5) * 0.8, life: 1.6, size: 0.14, color: new THREE.Color('#ff8fab'), alpha: 1, drag: 1.5, wobble: 0.3 });
           this.toast(`${v.name} has moved to Hearthvale! 🎉`);
+          setTimeout(() => this.ui.bubble(v, '👋'), 700);
           this.audio.chime();
         } else if (!this._hungryToast || this.time - this._hungryToast > 60) {
           this._hungryToast = this.time;
@@ -618,6 +652,11 @@ class Game {
     if (this.playing && this.speed > 0) this.simulate(dt);
     if (!this.playing) { this.rig.goal.yaw += rawDt * 0.05; this.dayT = 0.33 + Math.sin(this.time * 0.05) * 0.02; }
 
+    if (this.follow) {
+      const v = this.follow;
+      if (this.rig.held || [...this.rig.keys].some((k) => 'wasdqe'.includes(k) || k.startsWith('arrow')) || !this.villagers.list.includes(v)) this.follow = null;
+      else if (!v.inside) { this.rig.goal.x = damp(this.rig.goal.x, v.x, 3, rawDt); this.rig.goal.z = damp(this.rig.goal.z, v.z, 3, rawDt); }
+    }
     this.rig.update(rawDt);
     const night = this.sky.update(this.dayT, rawDt, this.rig.target);
     this.audio.night = night;
@@ -627,6 +666,7 @@ class Game {
     this.buildings.update(rawDt * (this.speed || 0.0001), st, night);
     this.buildings.windowGlow(night);
     if (this.speed > 0) this.fish.update(rawDt * Math.min(this.speed, 2), st);
+    if (this.speed > 0) this.animals.update(rawDt * Math.min(this.speed, 2), st, this.dayT, night);
     this.nature.updateLilies(st);
     this.bridges.update(rawDt);
     this._updateSeason();
@@ -813,18 +853,12 @@ class Game {
       }
     }
 
-    if (touch) {
-      this.ui.actionBar(bar);
-      // tapped villager / building info card (kept live while open)
-      const it = this.infoTarget;
-      let html = null;
-      if (it?.v && this.villagers.list.includes(it.v)) {
-        const d = this.villagers.describe(it.v);
-        html = `<b>${d.title}</b><br><span class="small">${d.sub}</span>`;
-      } else if (it?.b && this.buildings.byId.has(it.b.id)) html = this.describeBuilding(it.b);
-      else this.infoTarget = null;
-      this.ui.info(html);
-    } else this.ui.actionBar(null);
+    this.ui.actionBar(touch ? bar : null);
+    // clicked/tapped villager or building: info card kept live while open
+    const it = this.infoTarget;
+    if (it?.v && !this.villagers.list.includes(it.v)) this.infoTarget = null;
+    if (it?.b && !this.buildings.byId.has(it.b.id)) this.infoTarget = null;
+    this.ui.renderInfo(this.infoTarget);
   }
 
   describeBuilding(b) {
@@ -837,9 +871,12 @@ class Game {
       if (b.type === 'farm') sub += `<br>Wheat ${Math.round(b.crops.growth * 100)}% grown${(this.season?.crop ?? 1) < 0.5 ? ' (slow in winter)' : ''}`;
       if (b.type === 'bakery') sub += `<br>Wheat waiting to be baked: ${b.stock}`;
       if (b.type === 'market') sub += `<br>${b.workers.length ? '+10' : '+4'} cosiness${this.res.food >= 30 ? ' · trading spare food for wood' : ''}`;
+      if (b.type === 'sheep') sub += '<br>+4 cosiness · wool keeps winter cosy';
+      if (b.type === 'coop') sub += `<br>${(b.animals || []).length} hens${(this.season?.crop ?? 1) < 0.5 ? ' · laying less in winter' : ''}`;
+      if (b.type === 'dairy') sub += `<br>${(b.animals || []).length} cows`;
     }
     if (b.type === 'storehouse') sub = `🪵 ${this.res.wood} · 🍞 ${this.res.food}`;
-    if (d.cosy) sub = `+${d.cosy} cosiness`;
+    if (d.cosy && !d.workers) sub = `+${d.cosy} cosiness`;
     return `<b>${d.icon} ${d.name}</b>${sub ? `<br><span class="small">${sub}</span>` : ''}`;
   }
 }

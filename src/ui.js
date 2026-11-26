@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFS, TOOL_ORDER } from './buildings.js';
+import { DEFS, TOOL_ORDER, CATEGORIES } from './buildings.js';
+import { FAVOURITES } from './villagers.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -20,23 +21,55 @@ export class UI {
   _buildToolbar() {
     const tb = this.els.toolbar;
     this.toolEls = {};
+    this.tabEls = {};
+    const tabs = document.createElement('div');
+    tabs.className = 'tb-tabs';
+    tabs.setAttribute('role', 'tablist');
+    const tools = document.createElement('div');
+    tools.className = 'tb-tools';
+    tb.append(tabs, tools);
+    this.cat = CATEGORIES[0].id;
+    for (const c of CATEGORIES) {
+      const t = document.createElement('button');
+      t.className = 'tab';
+      t.setAttribute('role', 'tab');
+      t.innerHTML = `<span>${c.icon}</span><span class="tab-name">${c.name}</span>`;
+      t.addEventListener('click', () => { this.game.audio.init(); this.game.audio.click(); this.setCategory(c.id); });
+      tabs.appendChild(t);
+      this.tabEls[c.id] = t;
+    }
     for (const t of TOOL_ORDER) {
       const d = DEFS[t];
       const b = document.createElement('button');
       b.className = 'tool';
+      b.dataset.cat = CATEGORIES.find((c) => c.tools.includes(t))?.id;
       b.innerHTML = `<span class="tk">${d.key.toUpperCase()}</span><span class="ti">${d.icon}</span><span class="tn">${d.name}</span><span class="tc">${d.cost ? d.cost + ' 🪵' : 'free'}</span>
         <div class="tool-desc"><b>${d.icon} ${d.name}</b>${d.desc}</div>`;
       b.addEventListener('click', () => { this.game.audio.init(); this.game.setTool(this.game.tool === t ? null : t); });
-      tb.appendChild(b);
+      tools.appendChild(b);
       this.toolEls[t] = b;
     }
+    // keep each tab's tools in its own order
+    for (const c of CATEGORIES) for (const t of c.tools) tools.appendChild(this.toolEls[t]);
     const del = document.createElement('button');
     del.className = 'tool sep';
     del.innerHTML = `<span class="tk">X</span><span class="ti">🧹</span><span class="tn">Demolish</span><span class="tc">½ refund</span>
       <div class="tool-desc"><b>🧹 Demolish</b>Tidy away buildings or paths. Click & drag over paths.</div>`;
     del.addEventListener('click', () => this.game.setTool(this.game.tool === 'demolish' ? null : 'demolish'));
-    tb.appendChild(del);
+    tools.appendChild(del);
     this.toolEls.demolish = del;
+    this.toolsRow = tools;
+    this.setCategory(this.cat);
+  }
+
+  setCategory(id) {
+    this.cat = id;
+    for (const [cid, el] of Object.entries(this.tabEls)) {
+      el.classList.toggle('on', cid === id);
+      el.setAttribute('aria-selected', String(cid === id));
+    }
+    for (const el of Object.values(this.toolEls)) if (el.dataset.cat) el.hidden = el.dataset.cat !== id;
+    this.toolsRow.scrollLeft = 0;
   }
 
   _wire() {
@@ -80,7 +113,17 @@ export class UI {
     });
     this.ab.rotate.addEventListener('click', () => g.rotate());
     this.infoEl = $('#infocard');
-    this.infoEl.addEventListener('click', () => { g.infoTarget = null; this.info(null); });
+    this.infoEl.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      const v = g.infoTarget?.v;
+      if (act === 'close') { g.infoTarget = null; this.renaming = null; g.audio.click(); }
+      else if (act === 'follow' && v) { g.setFollow(g.follow === v ? null : v); this._infoKey = null; g.audio.click(); }
+      else if (act === 'rename' && v) { this._startRename(v); }
+      else if (act === 'save') this._finishRename(true);
+      else if (act === 'cancel') this._finishRename(false);
+    });
+    this.bubbleEl = $('#bubbles');
+    this.bubbles = [];
     $('#help-close').addEventListener('click', () => this.showHelp(false));
 
     const intro = $('#intro');
@@ -137,11 +180,84 @@ export class UI {
   }
 
   // touch: card describing a tapped villager or building
-  info(html) {
-    if (html === this._info) return;
-    this._info = html;
-    if (html) this.infoEl.innerHTML = `${html}<div class="info-close">✕</div>`;
+  // info card for a clicked/tapped villager or building
+  renderInfo(target) {
+    if (this.renaming) { if (target?.v !== this.renaming) this._finishRename(false); else return; }
+    const g = this.game;
+    let html = null;
+    if (target?.v) {
+      const v = target.v, d = g.villagers.describe(v);
+      const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const home = v.home ? (v.home.type === 'storehouse' ? 'the storehouse (needs a cottage)' : 'a cottage') : '–';
+      html = `<div class="ic-name"><b>${esc(v.name)}</b></div>
+        <div class="small">${d.sub}</div>
+        <div class="small">Feeling ${g.mood(v)} · Loves ${FAVOURITES[v.fav] || '…'}</div>
+        <div class="small">Lives in ${home}</div>
+        <div class="ic-btns"><button class="ic-btn" data-act="rename">✏️ Rename</button><button class="ic-btn${g.follow === v ? ' on' : ''}" data-act="follow">📍 ${g.follow === v ? 'Following' : 'Follow'}</button></div>`;
+    } else if (target?.b) html = g.describeBuilding(target.b);
+    if (html === this._infoKey) return;
+    this._infoKey = html;
+    if (html) this.infoEl.innerHTML = `${html}<button class="info-close" data-act="close" aria-label="Close">✕</button>`;
     this.infoEl.classList.toggle('show', !!html);
+  }
+
+  _startRename(v) {
+    this.renaming = v;
+    const row = this.infoEl.querySelector('.ic-name');
+    row.innerHTML = `<input id="rename-input" maxlength="16" autocomplete="off" aria-label="New name" /><button class="ic-btn ok" data-act="save">Save</button><button class="ic-btn" data-act="cancel">✕</button>`;
+    const inp = row.querySelector('input');
+    inp.value = v.name;
+    inp.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') this._finishRename(true);
+      if (e.key === 'Escape') this._finishRename(false);
+    });
+    inp.focus(); inp.select();
+  }
+
+  _finishRename(save) {
+    const v = this.renaming;
+    if (!v) return;
+    const inp = this.infoEl.querySelector('#rename-input');
+    const name = inp?.value.trim().replace(/\s+/g, ' ');
+    this.renaming = null;
+    this._infoKey = null;
+    if (save && name && name !== v.name) {
+      const old = v.name;
+      v.name = name;
+      this.toast(`${old} will now be known as ${name} 💛`);
+      this.game.villagers.say(v, '😊', true);
+      this.game.save();
+    }
+  }
+
+  // thought bubbles that float above villagers' heads
+  bubble(v, emoji) {
+    if (this.bubbles.length > 10 || v.inside) return;
+    const el = document.createElement('div');
+    el.className = 'bubble';
+    el.textContent = emoji;
+    this.bubbleEl.appendChild(el);
+    this.bubbles.push({ el, v, t: 0, life: 2.8 });
+  }
+
+  _updateBubbles(dt) {
+    const cam = this.game.camera, p = new THREE.Vector3();
+    this.bubbles = this.bubbles.filter((b) => {
+      b.t += dt;
+      const v = b.v;
+      if (b.t > b.life || v.inside || !this.game.villagers.list.includes(v)) { b.el.remove(); return false; }
+      p.set(v.x, v.y + 0.72 + b.t * 0.05, v.z);
+      const dist = cam.position.distanceTo(p);
+      p.project(cam);
+      if (p.z > 1 || dist > 45) { b.el.style.opacity = '0'; return true; }
+      const pop = b.t < 0.25 ? 0.6 + 0.4 * Math.sin((b.t / 0.25) * Math.PI / 2) * 1.08 : 1;
+      const sc = Math.max(0.65, Math.min(1.3, 16 / dist)) * pop;
+      const x = (p.x * 0.5 + 0.5) * innerWidth, y = (-p.y * 0.5 + 0.5) * innerHeight;
+      b.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%) scale(${sc})`;
+      b.el.style.opacity = String(Math.min(1, (b.life - b.t) * 2.5, b.t * 6));
+      return true;
+    });
   }
 
   refresh(force) {
@@ -161,6 +277,8 @@ export class UI {
     // keep the active tool visible in the scrolling touch toolbar
     if (g.tool !== this._lastTool) {
       this._lastTool = g.tool;
+      const cat = this.toolEls[g.tool]?.dataset.cat;
+      if (cat && cat !== this.cat) this.setCategory(cat);
       if (g.tool && g.isTouch && this.toolEls[g.tool]) this.toolEls[g.tool].scrollIntoView?.({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
     }
     if (force) this.last = {};
@@ -189,6 +307,7 @@ export class UI {
     e.hand.style.transform = `rotate(${t * 360 + 180}deg)`;
     set('dialIco', t > 0.22 && t < 0.8 ? '☀️' : '🌙', e.dialIco);
 
+    this._updateBubbles(dt);
     // floaters follow their world position
     const cam = g.camera;
     const v = new THREE.Vector3();

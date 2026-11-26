@@ -65,11 +65,24 @@ A touch only counts as a tap if the finger barely moves, lifts quickly and no se
 | 🥖 | Bakery | 12 🪵 | Farmers bring wheat here. The baker turns every 5 wheat into 9 bread |
 | 🧺 | Market | 14 🪵 | Villagers browse the stalls. The stallholder trades spare food (when you have 30+) for wood. +10 cosiness when staffed |
 | 🔔 | Chapel | 16 🪵 | Bells at dawn and dusk; villagers gather there in the evening. +14 cosiness |
+| 🐔 | Chicken Coop | 6 🪵 | Five hens peck about the run; the hen keeper brings eggs to the storehouse (fewer in winter) |
+| 🐄 | Cow Pasture | 12 🪵 | Three cows; the dairy farmer milks them and brings the milk to the storehouse |
+| 🐑 | Sheep Pasture | 10 🪵 | Four sheep and a shepherd. Wool keeps the village cosy through winter (otherwise winter costs cosiness) |
 | 🪣 | Well | 4 🪵 | Villagers gather here to chat. Adds cosiness |
 | 🌷 | Flower Bed | 1 🪵 | Adds cosiness |
 | 🏮 | Lantern | 2 🪵 | Glows at night. Adds cosiness |
 
 Villagers pick up jobs on their own, carry goods where they are needed, and head home to sleep when the lanterns come on. The village needs a little food each morning. A cosier village (wells, flowers, lanterns, a market, a chapel, paths, full bellies) attracts new families faster.
+
+The build bar is grouped into tabs: Homes, Food, Village life and Decor.
+
+Buildings settle into the meadow: the ground under each one flattens to its level and blends smoothly back into the surrounding slope.
+
+### Villagers and animals
+
+- Click or tap a villager to see what they're doing, how they feel, where they live and their favourite spot. You can **rename** them or **follow** them with the camera.
+- Little thought bubbles pop up as they go about their day: 🌾 at harvest, 🐟 when a fish bites, 💬 at the well, 💤 at bedtime, ❤️ at their favourite spot.
+- Ducks and ducklings paddle around the lake and the brook. Sheep, cows and hens wander their pens, graze and settle down at night.
 
 ### Seasons
 
@@ -94,6 +107,7 @@ src/
   terrain.js      height field, lake, brook, grid, seamless noise and terrain shader
   water.js        stylised lake and brook shaders (depth colour, shoreline foam, flowing ripples, ice)
   bridges.js      footbridges over the brook
+  animals.js      sheep, cows, chickens and ducks: models and behaviour
   seasons.js      season cycle and the shader patch for snow, autumn colour and blossom
   nature.js       instanced trees, grass, flowers, rocks, reeds, lily pads
   buildings.js    building definitions, placement rules, animations, smoke and crops

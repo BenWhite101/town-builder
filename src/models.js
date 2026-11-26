@@ -388,6 +388,8 @@ export const VILLAGER_GEO = {
   hair: (() => { const g = prep(new THREE.SphereGeometry(0.073, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55)); g.rotateX(-0.25); return g; })(),
   strawHat: mergeGeometries([prep(new THREE.CylinderGeometry(0.13, 0.13, 0.015, 14)), (() => { const c = prep(new THREE.CylinderGeometry(0.05, 0.065, 0.06, 12)); c.translate(0, 0.035, 0); return c; })()]),
   bakerHat: (() => { const g = prep(new THREE.CylinderGeometry(0.085, 0.06, 0.1, 12)); g.translate(0, 0.04, 0); const t = prep(new THREE.IcosahedronGeometry(0.08, 1)); t.scale(1, 0.6, 1); t.translate(0, 0.1, 0); return mergeGeometries([g, t]); })(),
+  pail: mergeGeometries([(() => { const c = prep(new THREE.CylinderGeometry(0.045, 0.035, 0.07, 10)); return c; })(), (() => { const t = prep(new THREE.TorusGeometry(0.04, 0.005, 4, 10, Math.PI)); t.translate(0, 0.035, 0); return t; })()]),
+  wool: mergeGeometries([[0, 0, 0, 0.05], [0.04, 0.01, 0.01, 0.035], [-0.04, 0.012, -0.01, 0.035], [0.0, 0.035, 0.0, 0.035]].map(([x, y, z, r]) => { const g = prep(new THREE.IcosahedronGeometry(r, 1)); g.translate(x, y, z); return g; })),
   hood: (() => { const g = prep(new THREE.ConeGeometry(0.085, 0.16, 10)); g.translate(0, 0.07, -0.01); return g; })(),
   beanie: (() => { const g = prep(new THREE.SphereGeometry(0.076, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5)); return g; })(),
   log: (() => { const g = prep(new THREE.CylinderGeometry(0.04, 0.04, 0.26, 8)); g.rotateZ(Math.PI / 2); return g; })(),
@@ -531,4 +533,72 @@ export function bridgeModel({ railW = true, railE = true } = {}) {
     b.add(G.box(0.03, 0.03, 0.9, 0.01), MAT.timber, sx * 0.46, 0.17, 0);
   }
   return b;
+}
+
+// ---- animal homes --------------------------------------------------------------------
+function picketFence(b, half, gateWidth = 0.5) {
+  // low wooden fence around a square, with a gate gap at the front (+z)
+  const post = (x, z) => b.add(G.box(0.05, 0.3, 0.05, 0.015), MAT.woodLight, x, 0.15, z);
+  const n = Math.round(half * 2 / 0.5);
+  for (let k = 0; k <= n; k++) {
+    const t = -half + (k / n) * half * 2;
+    post(t, -half); post(-half, t); post(half, t);
+    if (Math.abs(t) > gateWidth / 2 + 0.05) post(t, half);
+  }
+  for (const y of [0.13, 0.25]) {
+    b.add(G.box(half * 2 + 0.05, 0.035, 0.03, 0.01), MAT.woodLight, 0, y, -half);
+    b.add(G.box(0.03, 0.035, half * 2 + 0.05, 0.01), MAT.woodLight, -half, y, 0);
+    b.add(G.box(0.03, 0.035, half * 2 + 0.05, 0.01), MAT.woodLight, half, y, 0);
+    const seg = half - gateWidth / 2;
+    b.add(G.box(seg, 0.035, 0.03, 0.01), MAT.woodLight, -half + seg / 2, y, half);
+    b.add(G.box(seg, 0.035, 0.03, 0.01), MAT.woodLight, half - seg / 2, y, half);
+  }
+}
+
+export function coopModel(rng) {
+  const b = new ModelBuilder();
+  b.add(G.box(1.86, 0.06, 1.86, 0.03), MAT.soil, 0, 0.0, 0);
+  // scattered straw
+  for (let n = 0; n < 14; n++) b.add(G.box(0.12, 0.012, 0.02, 0.005), MAT.hay, (rng() - 0.5) * 1.5, 0.035, (rng() - 0.5) * 1.5, { ry: rng() * 3 });
+  // the hen house on little legs, back-left corner
+  const hx = -0.42, hz = -0.42;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.add(G.cyl(0.025, 0.025, 0.22, 5), MAT.woodDark, hx + sx * 0.28, 0.11, hz + sz * 0.2);
+  b.add(G.box(0.7, 0.42, 0.52, 0.03), MAT.woodLight, hx, 0.42, hz);
+  for (let r = 0; r < 3; r++) b.add(G.box(0.71, 0.012, 0.53, 0.004), MAT.woodDark, hx, 0.3 + r * 0.12, hz);
+  b.add(G.roof(0.66, 0.3, 0.84, 0.04), MAT.roofRed, hx, 0.62, hz, { ry: Math.PI / 2 });
+  b.add(G.box(0.14, 0.16, 0.03, 0.02), MAT.door, hx + 0.1, 0.33, hz + 0.27);
+  b.add(G.box(0.12, 0.03, 0.5, 0.01), MAT.woodLight, hx + 0.1, 0.13, hz + 0.5, { rx: 0.42 });
+  windowAt(b, hx - 0.18, 0.47, hz + 0.27, 0, 0.12, 0.1);
+  // feed trough & water dish
+  b.add(G.box(0.42, 0.08, 0.12, 0.03), MAT.woodDark, 0.45, 0.06, -0.55);
+  b.add(G.box(0.36, 0.03, 0.08, 0.01), MAT.hay, 0.45, 0.1, -0.55);
+  b.add(G.cyl(0.1, 0.08, 0.05, 10), MAT.metal, 0.55, 0.04, 0.35);
+  b.add(G.cyl(0.085, 0.085, 0.01, 10), MAT.water, 0.55, 0.065, 0.35);
+  picketFence(b, 0.94, 0.45);
+  return { builder: b, keepClear: [{ x: hx, z: hz + 0.05, r: 0.5 }], house: { x: hx + 0.1, z: hz + 0.45 } };
+}
+
+export function pastureModel(kind) {
+  return (rng) => {
+    const b = new ModelBuilder();
+    const half = 1.45;
+    picketFence(b, half, 0.55);
+    // a little shelter in the back-left corner
+    const sx = -0.95, sz = -0.95;
+    const roofMat = kind === 'cow' ? MAT.roofRed : MAT.roofMoss;
+    b.add(G.box(0.06, 0.5, 0.06, 0.02), MAT.timber, sx - 0.36, 0.25, sz + 0.3);
+    b.add(G.box(0.06, 0.5, 0.06, 0.02), MAT.timber, sx + 0.36, 0.25, sz + 0.3);
+    b.add(G.box(0.78, 0.46, 0.05, 0.02), MAT.woodLight, sx, 0.25, sz - 0.3);
+    b.add(G.box(0.05, 0.46, 0.62, 0.02), MAT.woodLight, sx - 0.38, 0.25, sz);
+    b.add(G.box(0.9, 0.05, 0.78, 0.02), roofMat, sx, 0.53, sz, { rx: -0.18 });
+    // hay and a water trough
+    b.add(G.cyl(0.14, 0.14, 0.22, 10), MAT.hay, 0.9, 0.14, -1.0, { rz: Math.PI / 2 });
+    if (kind === 'cow') b.add(G.cyl(0.14, 0.14, 0.22, 10), MAT.hay, 0.62, 0.14, -1.05, { rz: Math.PI / 2, ry: 0.4 });
+    b.add(G.box(0.55, 0.14, 0.18, 0.04), MAT.woodDark, 0.85, 0.07, 0.75);
+    b.add(G.box(0.48, 0.02, 0.12, 0.01), MAT.water, 0.85, 0.14, 0.75);
+    // a few wildflowers in the field
+    const fl = [MAT.yellow, MAT.whiteFlower, MAT.lilac];
+    for (let n = 0; n < 8; n++) b.add(G.sphere(0.03, 1), fl[n % 3], (rng() - 0.5) * 2.4, 0.07, (rng() - 0.5) * 2.4);
+    return { builder: b, keepClear: [{ x: sx, z: sz, r: 0.6 }, { x: 0.85, z: 0.75, r: 0.35 }, { x: 0.8, z: -1.0, r: 0.3 }] };
+  };
 }

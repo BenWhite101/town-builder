@@ -292,6 +292,7 @@ export class Nature {
     spots.forEach((s, i) => {
       e.set(rng() * 0.4, rng() * 6.28, rng() * 0.4);
       q.setFromEuler(e);
+      (this.rockOff ||= [])[i] = 0.05 * s.s;
       m.compose(new THREE.Vector3(s.x, terrainHeight(s.x, s.z) - 0.05 * s.s, s.z), q, new THREE.Vector3(s.s, s.s * 0.6, s.s * 0.9));
       mesh.setMatrixAt(i, m);
       this.rockMatrices.push(m.clone());
@@ -472,6 +473,37 @@ export class Nature {
     pads.receiveShadow = true;
     this.scene.add(pads, flowers);
     this.updateLilies(0);
+  }
+
+  // the ground moved (a building settled): keep grass, flowers, rocks and trees sitting on it
+  resettle(x0, z0, x1, z1) {
+    const ga = this.grass.instanceMatrix.array, go = this.grassOrig;
+    const fh = this.flowerHeads.instanceMatrix.array, fs = this.flowerStems.instanceMatrix.array, fm = this.flowerMatrices;
+    const ra = this.rocks.instanceMatrix.array;
+    for (let j = Math.max(0, Math.floor(z0 + HALF)); j <= Math.min(GRID - 1, Math.floor(z1 + HALF)); j++) {
+      for (let i = Math.max(0, Math.floor(x0 + HALF)); i <= Math.min(GRID - 1, Math.floor(x1 + HALF)); i++) {
+        const k = cellIndex(i, j);
+        for (const g of this.cellGrass.get(k) || []) {
+          const o = g * 16, y = terrainHeight(go[o + 12], go[o + 14]) - 0.02;
+          go[o + 13] = y;
+          if (ga[o + 15] !== 0) ga[o + 13] = y;
+        }
+        for (const f of this.cellFlowers.get(k) || []) {
+          const o = f * 16, y = terrainHeight(fm[o + 12], fm[o + 14]) - 0.01;
+          fm[o + 13] = y;
+          if (fh[o + 15] !== 0) { fh[o + 13] = y; fs[o + 13] = y; }
+        }
+        for (const r of this.cellRocks.get(k) || []) {
+          const m = this.rockMatrices[r].elements;
+          m[13] = terrainHeight(m[12], m[14]) - this.rockOff[r];
+          if (ra[r * 16 + 15] !== 0) ra[r * 16 + 13] = m[13];
+        }
+        for (const t of this.cellTrees.get(k) || []) { t.y = terrainHeight(t.x, t.z) - 0.03; this._writeTree(t); }
+      }
+    }
+    this.grass.instanceMatrix.needsUpdate = true;
+    this.flowerHeads.instanceMatrix.needsUpdate = this.flowerStems.instanceMatrix.needsUpdate = true;
+    this.rocks.instanceMatrix.needsUpdate = true;
   }
 
   setSeason(st) {

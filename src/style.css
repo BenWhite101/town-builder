@@ -12,6 +12,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body {
   margin: 0; height: 100%; overflow: hidden;
   background: #cfe6ee;
@@ -63,7 +64,13 @@ button {
 .btns button.on { opacity: 1; background: #fff; box-shadow: 0 1px 4px rgba(80, 55, 30, 0.15); }
 
 /* toolbar */
-#toolbar { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 8px; }
+#toolbar { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 8px 8px; }
+.tb-tabs { display: flex; gap: 4px; }
+.tab { display: flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 11px; font-size: 13px; font-weight: 500; color: var(--ink-soft); transition: background 0.2s, color 0.2s; }
+.tab:hover { background: rgba(255, 255, 255, 0.6); }
+.tab.on { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(80, 55, 30, 0.12); }
+.tab:focus-visible, .tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tb-tools { display: flex; gap: 6px; max-width: 100%; }
 body.playing #toolbar { transform: translateX(-50%); }
 body:not(.playing) #toolbar { transform: translate(-50%, 12px); }
 .tool {
@@ -89,10 +96,10 @@ body:not(.playing) #toolbar { transform: translate(-50%, 12px); }
 .tool-desc b { display: block; font-size: 14px; margin-bottom: 2px; }
 .tool:hover .tool-desc { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-#hint { position: fixed; left: 16px; bottom: calc(118px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: rgba(70, 55, 40, 0.75); background: rgba(255, 248, 236, 0.6); padding: 6px 10px; border-radius: 12px; max-width: 220px; transition: opacity 0.6s; }
+#hint { position: fixed; left: 16px; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: rgba(70, 55, 40, 0.75); background: rgba(255, 248, 236, 0.6); padding: 6px 10px; border-radius: 12px; max-width: 220px; transition: opacity 0.6s; }
 
 /* toasts */
-#toasts { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); display: flex; flex-direction: column-reverse; align-items: center; gap: 6px; pointer-events: none; }
+#toasts { position: fixed; left: 50%; bottom: 158px; transform: translateX(-50%); display: flex; flex-direction: column-reverse; align-items: center; gap: 6px; pointer-events: none; }
 .toast {
   background: var(--cream); padding: 8px 14px; border-radius: 14px; box-shadow: var(--shadow); font-size: 14px; font-weight: 500;
   animation: toastIn 0.5s cubic-bezier(.2, .9, .3, 1.3) both;
@@ -148,7 +155,7 @@ body.touch .for-mouse, body:not(.touch) .for-touch { display: none; }
 
 #actionbar {
   display: none; left: 50%; transform: translateX(-50%);
-  bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(140px + env(safe-area-inset-bottom, 0px));
   width: min(460px, calc(100vw - 16px));
   padding: 10px 10px 10px 16px; gap: 10px; align-items: center; z-index: 4;
 }
@@ -173,12 +180,33 @@ body.touch.playing #actionbar.show { display: flex; animation: barIn 0.35s cubic
 
 #infocard {
   display: none; left: 50%; transform: translateX(-50%);
-  bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(140px + env(safe-area-inset-bottom, 0px));
   max-width: calc(100vw - 16px); padding: 10px 40px 10px 14px; font-size: 14px; line-height: 1.35; z-index: 3;
 }
-body.touch.playing #infocard.show { display: block; animation: barIn 0.3s ease both; }
+body.playing #infocard.show { display: flex; flex-direction: column; gap: 2px; animation: barIn 0.3s ease both; }
+body:not(.touch) #infocard { left: calc(16px + env(safe-area-inset-left, 0px)); top: calc(84px + env(safe-area-inset-top, 0px)); bottom: auto; transform: none; width: 290px; }
+body:not(.touch).playing #infocard.show { animation: barIn2 0.25s ease both; }
 #infocard b { font-size: 15px; }
-.info-close { position: absolute; top: 8px; right: 12px; color: var(--ink-soft); font-size: 14px; }
+.info-close { position: absolute; top: 6px; right: 8px; width: 28px; height: 28px; border-radius: 9px; color: var(--ink-soft); font-size: 14px; }
+.info-close:hover { background: rgba(255, 255, 255, 0.7); }
+.ic-name { display: flex; align-items: center; gap: 6px; min-height: 26px; }
+.ic-name input { flex: 1; min-width: 0; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); padding: 4px 8px; border-radius: 9px; border: 2px solid var(--accent-2); background: #fff; outline: none; }
+.ic-name input:focus { border-color: var(--accent); }
+.ic-btns { display: flex; gap: 6px; margin-top: 6px; }
+.ic-btn { padding: 5px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.8); font-size: 13px; font-weight: 500; box-shadow: 0 1px 0 #e3d4bc; }
+.ic-btn:hover { background: #fff; }
+.ic-btn.on { background: var(--accent-2); }
+.ic-btn.ok { background: var(--good); color: #fff; }
+.ic-btn:focus-visible, .info-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* thought bubbles */
+#bubbles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.bubble {
+  position: absolute; left: 0; top: 0; padding: 3px 7px 4px; border-radius: 14px; background: #fff;
+  font-size: 18px; line-height: 1.1; box-shadow: 0 3px 10px rgba(80, 55, 30, 0.2); transform-origin: 50% 100%; will-change: transform;
+}
+.bubble::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: #fff; border-radius: 2px; transform: translateX(-50%) rotate(45deg); z-index: -1; }
+@media (prefers-reduced-motion: reduce) { .bubble { transition: none; } }
 
 /* ---------- settings panel ---------- */
 #settings {
@@ -226,11 +254,16 @@ body.touch #toolbar {
   left: 0; right: 0; bottom: 0; transform: none;
   border-radius: 22px 22px 0 0; border-bottom: none;
   padding: 8px max(8px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
-  overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x;
-  scroll-snap-type: x proximity; scrollbar-width: none;
-  justify-content: safe center;
+  align-items: stretch;
 }
-body.touch #toolbar::-webkit-scrollbar { display: none; }
+body.touch .tb-tabs { justify-content: center; }
+body.touch .tab { padding: 6px 10px; font-size: 12.5px; }
+body.touch .tb-tools {
+  overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x;
+  scroll-snap-type: x proximity; scrollbar-width: none; justify-content: safe center; padding-top: 4px;
+}
+body.touch .tb-tools::-webkit-scrollbar { display: none; }
+@media (max-width: 400px) { body.touch .tab-name { display: none; } body.touch .tab { padding: 6px 14px; font-size: 16px; } }
 body.touch:not(.playing) #toolbar { transform: translateY(12px); }
 body.touch .tool { width: 66px; height: 74px; flex: none; scroll-snap-align: center; }
 body.touch .tool:hover { transform: none; background: rgba(255, 255, 255, 0.55); }
@@ -253,16 +286,18 @@ body.touch #tooltip { display: none; }
   body:not(.touch) .tool .ti { font-size: 25px; }
 }
 @media (max-width: 930px) {
-  body:not(.touch) #toolbar { max-width: calc(100vw - 16px); overflow-x: auto; justify-content: flex-start; }
+  body:not(.touch) #toolbar { max-width: calc(100vw - 16px); }
+  body:not(.touch) .tb-tools { overflow-x: auto; }
   body:not(.touch) .tool { flex: none; }
   body:not(.touch) .tool-desc { display: none; }
 }
 /* ---------- narrow desktop windows ---------- */
 @media (max-width: 760px) {
-  body:not(.touch) #toolbar { max-width: calc(100vw - 16px); overflow-x: auto; justify-content: flex-start; }
+  body:not(.touch) #toolbar { max-width: calc(100vw - 16px); }
+  body:not(.touch) .tb-tools { overflow-x: auto; }
   body:not(.touch) .tool { flex: none; }
   body:not(.touch) .tool-desc { display: none; }
-  body:not(.touch) #clock { top: auto; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); }
+  body:not(.touch) #clock { top: auto; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
   body:not(.touch) #hint { display: none; }
   .logo { font-size: 44px; }
   .intro-card { padding: 24px; margin: 0 16px; }

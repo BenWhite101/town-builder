@@ -13,7 +13,12 @@ const NAMES = ['Elsie', 'Wren', 'Tobias', 'Maud', 'Hal', 'Ivy', 'Rowan', 'Bram',
 const TUNICS = ['#d9705a', '#6e9ccf', '#8cb369', '#e3b85f', '#b78bc4', '#e8a0a8', '#c98d5a', '#5fa8a0', '#d6865b', '#7f9fb8'];
 const SKINS = ['#f5d0b0', '#ebbd98', '#d39f78', '#a8714d', '#f2c9a5', '#8a5a3c'];
 const HAIRS = ['#5a3b26', '#2f2420', '#c08a4a', '#e2c47e', '#8a3b22', '#a7a29c', '#3d2b1f'];
-export const JOB_LABEL = { farm: 'Farmer', woodcutter: 'Woodcutter', fishery: 'Fisher', bakery: 'Baker', market: 'Stallholder' };
+export const FAVOURITES = {
+  lake: 'the lake 🌊', brook: 'the brook 🏞️', flowers: 'the flower beds 🌷', well: 'the well 🪣',
+  market: 'the market 🧺', chapel: 'the chapel 🔔', animals: 'the animals 🐑', bridge: 'the little bridges 🌉',
+};
+const FAV_KEYS = Object.keys(FAVOURITES);
+export const JOB_LABEL = { farm: 'Farmer', woodcutter: 'Woodcutter', fishery: 'Fisher', bakery: 'Baker', market: 'Stallholder', coop: 'Hen keeper', dairy: 'Dairy farmer', sheep: 'Shepherd' };
 
 const matCache = new Map();
 const mat = (c, extra) => {
@@ -21,8 +26,8 @@ const mat = (c, extra) => {
   if (!matCache.has(k)) matCache.set(k, new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...extra }));
   return matCache.get(k);
 };
-const HAT_MATS = { farm: mat('#e8c56a'), woodcutter: mat('#c4513f'), fishery: mat('#4f79b5'), bakery: mat('#fffaf0'), market: mat('#8cb369') };
-const CARRY_MATS = { wood: MAT.log, wheat: mat('#efc357'), fish: mat('#ff9a4d', { emissive: '#ff9a4d', emissiveIntensity: 0.1 }), bread: mat('#c98a4a') };
+const HAT_MATS = { farm: mat('#e8c56a'), woodcutter: mat('#c4513f'), fishery: mat('#4f79b5'), bakery: mat('#fffaf0'), market: mat('#8cb369'), coop: mat('#b98b5c'), dairy: mat('#f4efe6'), sheep: mat('#6e9a5a') };
+const CARRY_MATS = { wood: MAT.log, wheat: mat('#efc357'), fish: mat('#ff9a4d', { emissive: '#ff9a4d', emissiveIntensity: 0.1 }), bread: mat('#c98a4a'), eggs: mat('#fff6e8'), milk: mat('#9aa3ad', { roughness: 0.4, metalness: 0.3 }), wool: mat('#f6f1e6') };
 
 let nameIdx = Math.floor(Math.random() * NAMES.length);
 let vid = 1;
@@ -68,6 +73,7 @@ export class Villagers {
       x: at.x, z: at.z, y: terrainHeight(at.x, at.z), heading: Math.random() * 6.28, dirX: 0, dirZ: 1,
       carrying: null, inside: null, phase: Math.random() * 10, anim: 'idle', animT: 0,
       sched: Math.random() * 0.03, appear: 0, speedMul: 0.9 + Math.random() * 0.2, stuck: 0, dustT: 0,
+      fav: opts.fav && FAVOURITES[opts.fav] ? opts.fav : FAV_KEYS[Math.floor(Math.random() * FAV_KEYS.length)], sayT: 4 + Math.random() * 20,
     };
     this._buildMesh(v);
     if (home) home.residents.push(v);
@@ -108,9 +114,9 @@ export class Villagers {
     const p = v.parts;
     const t = v.job?.type;
     p.hat.visible = !!t;
-    if (t === 'farm') { p.hat.geometry = VG.strawHat; p.hat.position.set(0, 0.478, 0); }
-    if (t === 'woodcutter') { p.hat.geometry = VG.hood; p.hat.position.set(0, 0.45, 0); }
-    if (t === 'fishery' || t === 'market') { p.hat.geometry = VG.beanie; p.hat.position.set(0, 0.44, 0); }
+    if (t === 'farm' || t === 'coop') { p.hat.geometry = VG.strawHat; p.hat.position.set(0, 0.478, 0); }
+    if (t === 'woodcutter' || t === 'sheep') { p.hat.geometry = VG.hood; p.hat.position.set(0, 0.45, 0); }
+    if (t === 'fishery' || t === 'market' || t === 'dairy') { p.hat.geometry = VG.beanie; p.hat.position.set(0, 0.44, 0); }
     if (t === 'bakery') { p.hat.geometry = VG.bakerHat; p.hat.position.set(0, 0.46, 0); }
     if (t) p.hat.material = HAT_MATS[t];
     p.hair.visible = t !== 'woodcutter';
@@ -121,7 +127,7 @@ export class Villagers {
     const c = v.parts.carry;
     c.visible = !!kind;
     if (!kind) return;
-    c.geometry = kind === 'wood' ? VG.log : kind === 'wheat' || kind === 'bread' ? VG.basket : VG.fish;
+    c.geometry = { wood: VG.log, wheat: VG.basket, bread: VG.basket, eggs: VG.basket, milk: VG.pail, wool: VG.wool }[kind] || VG.fish;
     c.material = CARRY_MATS[kind];
     c.position.set(0, kind === 'wood' ? 0.3 : 0.28, 0.1);
   }
@@ -171,23 +177,94 @@ export class Villagers {
     for (const t of [v.task, ...v.tasks]) {
       if (t?.tree) t.tree.reserved = false;
       if (t?.type === 'depositBakery') t.b.incoming = Math.max(0, (t.b.incoming || 0) - 5);
+      if (t?.animal && t.animal.held === v) t.animal.held = null;
     }
     if (v.job?.harvester === v) v.job.harvester = null;
     v.tasks = []; v.task = null; v.path = null;
   }
 
   // ---- brains ---------------------------------------------------------------------
+  // a little thought bubble over their head (rate-limited so the village doesn't get noisy)
+  say(v, emoji, force = false) {
+    if (v.inside) return;
+    if (!force && v.sayT > 0) return;
+    v.sayT = 18 + Math.random() * 30;
+    this.game.ui.bubble(v, emoji);
+  }
+
+  _shorePoints(kind) {
+    // land cells beside the lake (or the brook), facing the water
+    const key = `_shore_${kind}`;
+    if (!this[key]) {
+      const g = this.grid, pts = [];
+      for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
+        const k = cellIndex(i, j);
+        if (g.water[k]) continue;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (!inBounds(i + di, j + dj)) continue;
+          const kk = cellIndex(i + di, j + dj);
+          if (g.water[kk] && (kind === 'brook' ? g.stream[kk] : !g.stream[kk])) {
+            const c = cellCenter(i, j), w = cellCenter(i + di, j + dj);
+            pts.push({ i, j, x: c.x + di * 0.25, z: c.z + dj * 0.25, fx: w.x, fz: w.z });
+            break;
+          }
+        }
+      }
+      this[key] = pts;
+    }
+    return this[key];
+  }
+
+  _favSpot(v) {
+    const near = (list) => {
+      const ok = list.filter((p) => this.walkableAt(p.x, p.z));
+      if (!ok.length) return null;
+      ok.sort((a, b) => ((a.x - v.x) ** 2 + (a.z - v.z) ** 2) - ((b.x - v.x) ** 2 + (b.z - v.z) ** 2));
+      return ok[Math.floor(Math.random() * Math.min(8, ok.length))];
+    };
+    const around = (types) => {
+      const bs = this.buildings.list.filter((b) => types.includes(b.type) && b.anim >= 1);
+      if (!bs.length) return null;
+      const b = bs[Math.floor(Math.random() * bs.length)];
+      const pts = [];
+      for (let n = 0; n < 12; n++) {
+        const a = Math.random() * Math.PI * 2, r = b.def.walkable ? Math.random() * (b.def.size / 2 - 0.3) : b.def.size / 2 + 0.45;
+        pts.push({ x: b.x + Math.cos(a) * r, z: b.z + Math.sin(a) * r, fx: b.x, fz: b.z });
+      }
+      return near(pts);
+    };
+    switch (v.fav) {
+      case 'lake': return near(this._shorePoints('lake'));
+      case 'brook': return near(this._shorePoints('brook'));
+      case 'flowers': return around(['garden']);
+      case 'well': return around(['well']);
+      case 'market': return around(['market']);
+      case 'chapel': return around(['chapel']);
+      case 'animals': return around(['sheep', 'dairy', 'coop']);
+      case 'bridge': {
+        const pts = this.game.bridges.serialize().map((k) => { const c = cellCenter(k % GRID, Math.floor(k / GRID)); return { x: c.x, z: c.z, fx: c.x + 1, fz: c.z }; });
+        return near(pts);
+      }
+      default: return null;
+    }
+  }
+
   _think(v, dayT) {
     const night = isNightFor(dayT, v);
     if (v.inside) {
-      if (!night) this._exit(v);
+      if (!night) { this._exit(v); if (Math.random() < 0.3) this.say(v, '☀️'); }
       return;
+    }
+    if (!night && this.game.res.food <= 0 && Math.random() < 0.15) this.say(v, '😟');
+    else if ((this.game.season?.snow ?? 0) > 0.6 && Math.random() < 0.08) {
+      const woolly = this.buildings.list.some((b) => b.type === 'sheep' && b.workers.length);
+      this.say(v, woolly ? '🧣' : '🥶');
     }
     if (night) {
       const h = v.home && this.buildings.byId.has(v.home.id) ? v.home : this.storehouse();
       if (h) {
         this.setTool(v, null);
-        v.tasks.push(this.gotoCell(h.entrance), { type: 'enter', b: h });
+        v.tasks.push(this.gotoCell(h.entrance), { type: 'enter', b: h, yawn: Math.random() < 0.35 });
         return;
       }
     }
@@ -256,6 +333,22 @@ export class Villagers {
       const cell = b.cells[Math.floor(Math.random() * b.cells.length)];
       const c = cellCenter(cell[0], cell[1]);
       v.tasks.push(this.goto(c.x + (Math.random() - 0.5) * 0.5, c.z + (Math.random() - 0.5) * 0.5), { type: 'trade', b, t: 7 + Math.random() * 5 });
+    } else if (b.animals) {
+      // hen keeper, dairy farmer, shepherd: look after an animal, sometimes come back with something
+      const spot = this.game.animals.besideAnimal(b);
+      let tx, tz;
+      if (spot && this.walkableAt(spot.x, spot.z)) { tx = spot.x; tz = spot.z; } else {
+        const cell = b.cells[Math.floor(Math.random() * b.cells.length)];
+        const c = cellCenter(cell[0], cell[1]); tx = c.x; tz = c.z;
+      }
+      b.cycles = (b.cycles || 0) + 1;
+      const winter = (this.game.season?.crop ?? 1) < 0.5;
+      let produce = null;
+      if (b.type === 'coop' && Math.random() < (winter ? 0.3 : 0.6)) produce = 'eggs';
+      if (b.type === 'dairy' && b.cycles % 2 === 0) produce = 'milk';
+      if (b.type === 'sheep' && b.cycles % 3 === 0) produce = 'wool';
+      if (spot?.animal && b.type !== 'coop') spot.animal.held = v; // the cow/sheep waits for them
+      v.tasks.push(this.goto(tx, tz), { type: 'animalCare', b, animal: spot?.animal, t: 3.5 + Math.random() * 2, produce });
     } else if (b.type === 'fishery') {
       const s = b.shore;
       if (!s) { v.tasks.push(this.gotoCell(b.entrance), { type: 'wait', t: 5 }); return; }
@@ -271,6 +364,14 @@ export class Villagers {
   _idlePlan(v) {
     const r = Math.random();
     const t = this.dayT ?? 0.5;
+    // everyone has a favourite spot they like to wander off to
+    if (Math.random() < 0.35) {
+      const spot = this._favSpot(v);
+      if (spot) {
+        v.tasks.push(this.goto(spot.x, spot.z), { type: 'wait', t: 6 + Math.random() * 8, anim: 'look', faceX: spot.fx, faceZ: spot.fz, fav: true });
+        return;
+      }
+    }
     // evenings: wander over to the chapel
     const chapels = this.buildings.list.filter((b) => b.type === 'chapel' && b.anim >= 1);
     if (chapels.length && t > 0.66 && t < 0.77 && Math.random() < 0.6) {
@@ -322,6 +423,7 @@ export class Villagers {
   // ---- per frame ------------------------------------------------------------------
   update(dt, dayT, time) {
     this.dayT = dayT;
+    for (const v of this.list) v.sayT -= dt;
     for (const v of this.list) {
       if (v.inside) {
         if (v.wakeCheck === undefined || (v.wakeCheck -= dt) <= 0) {
@@ -395,6 +497,10 @@ export class Villagers {
       }
       case 'wait': {
         v.anim = t.anim || 'idle';
+        if (t.elapsed === dt) {
+          if (t.fav) this.say(v, '❤️', true);
+          else if (t.anim === 'chat' && Math.random() < 0.5) this.say(v, ['💬', '😄', '🎵', '❤️'][Math.floor(Math.random() * 4)]);
+        }
         if (t.faceX !== undefined) this._faceDir(v, Math.atan2(t.faceX - v.x, t.faceZ - v.z), dt, 5);
         if (t.anim === 'chat' && Math.random() < dt * 0.25) {
           this.game.particles.spawn({ x: v.x, y: v.y + 0.62, z: v.z, vy: 0.35, life: 1.4, size: 0.1, color: new THREE.Color('#ff8fab'), alpha: 0.9, drag: 1, wobble: 0.2 });
@@ -421,6 +527,7 @@ export class Villagers {
         if (t.elapsed >= t.t) {
           const away = Math.atan2(tree.z - v.z, tree.x - v.x);
           this.game.nature.fellTree(tree, away + Math.PI / 2);
+          if (Math.random() < 0.4) this.say(v, '🌲');
           setTimeout(() => this.game.audio?.thud(tree.x, tree.z), 1100);
           this._done(v);
         }
@@ -434,6 +541,7 @@ export class Villagers {
           if (t.type === 'tend') f.crops.growth = Math.min(1, f.crops.growth + 0.11 * (this.game.season?.crop ?? 1));
           else {
             f.crops.growth = 0.12; f.harvester = null;
+            this.say(v, '🌾');
             this.game.audio?.rustle(v.x, v.z);
             for (let n = 0; n < 10; n++) this.game.particles.spawn({ x: v.x + (Math.random() - 0.5) * 0.5, y: v.y + 0.2, z: v.z + (Math.random() - 0.5) * 0.5, vy: 0.6 + Math.random() * 0.4, vx: (Math.random() - 0.5) * 0.4, vz: (Math.random() - 0.5) * 0.4, life: 1.2, size: 0.07, color: new THREE.Color('#f3cf6a'), alpha: 1, gravity: 1.5, drag: 1 });
           }
@@ -459,6 +567,7 @@ export class Villagers {
           this.game.ripples.spawn(t.wx, t.wz, 0.5, 1.4);
           this.game.audio?.splash(t.wx, t.wz, 0.4);
           if (caught) {
+            this.say(v, '🐟');
             this.setTool(v, null);
             this.setCarry(v, 'fish');
             this._deliverPlan(v);
@@ -478,6 +587,7 @@ export class Villagers {
       }
       case 'bake': {
         const b = t.b;
+        if (t.elapsed === dt) this.say(v, '🥖');
         if (!this.buildings.byId.has(b.id)) { this._releaseTasks(v); this._done(v); return; }
         if (!t.started) {
           if (b.stock < 5) { this._releaseTasks(v); this._done(v); return; }
@@ -506,12 +616,30 @@ export class Villagers {
         }
         return;
       }
+      case 'animalCare': {
+        const b = t.b;
+        if (!this.buildings.byId.has(b.id)) { this._releaseTasks(v); this._done(v); return; }
+        const a = t.animal;
+        if (a && !a.leaving) this._faceDir(v, Math.atan2(a.x - v.x, a.z - v.z), dt, 6);
+        v.anim = 'tend';
+        if (t.elapsed >= t.t) {
+          if (a && a.held === v) a.held = null;
+          if (t.produce) { this.setCarry(v, t.produce); this._deliverPlan(v, t.produce); }
+          const icons = { coop: ['🥚', '🐔'], dairy: ['🥛', '🐄'], sheep: ['🧶', '🐑'] }[b.type];
+          if (icons) this.say(v, t.produce ? icons[0] : (Math.random() < 0.5 ? icons[1] : '❤️'));
+          this._done(v);
+        }
+        return;
+      }
       case 'deposit': {
         const s = this.storehouse();
         if (v.carrying && s) {
-          const amount = v.carrying === 'wood' ? 4 : v.carrying === 'wheat' ? 5 : v.carrying === 'bread' ? 9 : 3;
-          const res = v.carrying === 'wood' ? 'wood' : 'food';
-          this.game.addResource(res, amount, { x: v.x, y: v.y + 0.7, z: v.z });
+          if (v.carrying === 'wool') this.game.addWool({ x: v.x, y: v.y + 0.7, z: v.z });
+          else {
+            const amount = { wood: 4, wheat: 5, bread: 9, eggs: 3, milk: 5 }[v.carrying] ?? 3;
+            const res = v.carrying === 'wood' ? 'wood' : 'food';
+            this.game.addResource(res, amount, { x: v.x, y: v.y + 0.7, z: v.z });
+          }
         }
         this.setCarry(v, null);
         this._done(v);
@@ -519,6 +647,7 @@ export class Villagers {
       }
       case 'enter': {
         v.anim = 'idle';
+        if (t.elapsed === dt && t.yawn) this.say(v, '💤', true);
         v.appear -= dt * 4;
         if (v.appear <= 0) {
           v.inside = t.b;
@@ -680,6 +809,9 @@ export class Villagers {
     else if (v.carrying === 'wood') doing = 'carrying logs';
     else if (v.carrying === 'bread') doing = 'carrying fresh bread';
     else if (v.carrying === 'wheat') doing = 'carrying wheat';
+    else if (v.carrying === 'eggs') doing = 'carrying a basket of eggs';
+    else if (v.carrying === 'milk') doing = 'carrying a pail of milk';
+    else if (v.carrying === 'wool') doing = 'carrying a bundle of wool';
     else if (v.carrying) doing = 'bringing a fish home';
     else if (t === 'chop') doing = 'chopping a tree';
     else if (t === 'tend') doing = 'tending the wheat';
@@ -687,13 +819,14 @@ export class Villagers {
     else if (t === 'fish') doing = 'fishing';
     else if (t === 'bake') doing = 'baking bread';
     else if (t === 'trade') doing = 'minding the stall';
+    else if (t === 'animalCare') doing = { coop: 'feeding the hens', dairy: 'milking a cow', sheep: 'tending the sheep' }[v.task.b.type];
     else if (v.task?.anim === 'chat') doing = 'having a natter';
     else if (t === 'goto') doing = 'on the way';
     return { title: v.name, sub: `${job} · ${doing}` };
   }
 
   serialize() {
-    return this.list.map((v) => ({ name: v.name, tunic: v.tunic, skin: v.skin, hair: v.hairC, home: v.home?.id ?? null, x: v.x, z: v.z }));
+    return this.list.map((v) => ({ name: v.name, tunic: v.tunic, skin: v.skin, hair: v.hairC, home: v.home?.id ?? null, x: v.x, z: v.z, fav: v.fav }));
   }
 }
 

@@ -86,7 +86,7 @@ export function streamInfo(x, z) {
   return { d, w: streamWidth(xc), s: streamSurface(xc) };
 }
 
-export function terrainHeight(x, z) {
+function rawHeight(x, z) {
   const h = baseHeight(x, z);
   const st = streamInfo(x, z);
   if (!st) return h;
@@ -94,6 +94,61 @@ export function terrainHeight(x, z) {
   const target = d < w ? s - 0.04 - 0.36 * (1 - (d / w) ** 2) : s - 0.04 + (d - w) * 0.5;
   const m = smoothstep(w + 3.0, w + 1.2, d);
   return lerp(h, Math.min(h, target), m);
+}
+
+// ---- Ground settling under buildings ----------------------------------------
+// Each building flattens a patch of ground to its own level and blends smoothly back into
+// the meadow around it, so nothing perches on a slope. `k` animates the settling in/out.
+export const SETTLE_MARGIN = 1.4;
+const settlePatches = new Map();   // building id -> patch
+const cellSettle = new Map();      // cell index -> Set of patches touching that cell
+
+function patchCells(p, fn) {
+  const r = p.half + SETTLE_MARGIN;
+  const i0 = Math.floor(p.cx - r + HALF), i1 = Math.floor(p.cx + r + HALF);
+  const j0 = Math.floor(p.cz - r + HALF), j1 = Math.floor(p.cz + r + HALF);
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (inBounds(i, j)) fn(cellIndex(i, j));
+}
+
+export function addSettle(id, cx, cz, half, y, k = 0) {
+  const p = { id, cx, cz, half, y, k };
+  settlePatches.set(id, p);
+  patchCells(p, (c) => { if (!cellSettle.has(c)) cellSettle.set(c, new Set()); cellSettle.get(c).add(p); });
+  return p;
+}
+
+export function removeSettle(id) {
+  const p = settlePatches.get(id);
+  if (!p) return;
+  settlePatches.delete(id);
+  patchCells(p, (c) => { const set = cellSettle.get(c); if (set) { set.delete(p); if (!set.size) cellSettle.delete(c); } });
+}
+
+// world-space box a patch can affect (for refreshing meshes and decorations)
+export function settleBounds(p) {
+  const r = p.half + SETTLE_MARGIN + 0.5;
+  return { x0: p.cx - r, x1: p.cx + r, z0: p.cz - r, z1: p.cz + r };
+}
+
+export function terrainHeight(x, z) {
+  const h = rawHeight(x, z);
+  if (!cellSettle.size) return h;
+  const i = Math.floor(x + HALF), j = Math.floor(z + HALF);
+  if (i < 0 || j < 0 || i >= GRID || j >= GRID) return h;
+  const set = cellSettle.get(j * GRID + i);
+  if (!set) return h;
+  const dry = smoothstep(-0.05, 0.15, h); // never reshape the lake or the brook
+  let num = 0, den = 0, mw = 0;
+  for (const p of set) {
+    if (p.k <= 0) continue;
+    const dx = Math.max(0, Math.abs(x - p.cx) - p.half), dz = Math.max(0, Math.abs(z - p.cz) - p.half);
+    const d = Math.hypot(dx, dz);
+    if (d >= SETTLE_MARGIN) continue;
+    const w = smoothstep(SETTLE_MARGIN, 0, d) * p.k * dry;
+    const wa = d === 0 ? 1000 * w : w; // a building's own footprint always wins
+    num += wa * p.y; den += wa; if (w > mw) mw = w;
+  }
+  return den > 0 ? lerp(h, num / den, mw) : h;
 }
 
 // ---- Grid helpers ---------------------------------------------------------
@@ -127,6 +182,23 @@ export class Grid {
         const st = streamInfo(x, z);
         if (st && x < STREAM.mouth && st.d < st.w + 0.3) { wet = true; this.stream[k] = 1; }
         this.water[k] = wet ? 1 : 0;
+        this.slope[k] = mx - mn;
+      }
+    }
+  }
+  // recompute height & slope after the ground has been reshaped
+  refreshRegion(x0, z0, x1, z1) {
+    for (let j = Math.max(0, Math.floor(z0 + HALF)); j <= Math.min(GRID - 1, Math.floor(z1 + HALF)); j++) {
+      for (let i = Math.max(0, Math.floor(x0 + HALF)); i <= Math.min(GRID - 1, Math.floor(x1 + HALF)); i++) {
+        const { x, z } = cellCenter(i, j);
+        const k = cellIndex(i, j);
+        const hc = terrainHeight(x, z);
+        let mn = hc, mx = hc;
+        for (const [ox, oz] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) {
+          const hh = terrainHeight(x + ox, z + oz);
+          mn = Math.min(mn, hh); mx = Math.max(mx, hh);
+        }
+        this.h[k] = hc;
         this.slope[k] = mx - mn;
       }
     }
@@ -290,7 +362,28 @@ export function createTerrain(grid) {
     pathTex.needsUpdate = true;
   }
 
-  return { mesh, uniforms, setPath, noiseTex };
+  // re-shape part of the mesh after the ground under a building settles
+  const step = WORLD_SIZE / seg, row = seg + 1, nrm = geo.attributes.normal;
+  function refresh(x0, z0, x1, z1) {
+    const ix0 = Math.max(0, Math.floor((x0 + WORLD_SIZE / 2) / step)), ix1 = Math.min(seg, Math.ceil((x1 + WORLD_SIZE / 2) / step));
+    const iz0 = Math.max(0, Math.floor((z0 + WORLD_SIZE / 2) / step)), iz1 = Math.min(seg, Math.ceil((z1 + WORLD_SIZE / 2) / step));
+    const e = step * 0.5;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const v = iz * row + ix;
+      const x = pos.getX(v), z = pos.getZ(v);
+      pos.setY(v, terrainHeight(x, z));
+      const hx = terrainHeight(x + e, z) - terrainHeight(x - e, z);
+      const hz = terrainHeight(x, z + e) - terrainHeight(x, z - e);
+      const l = Math.hypot(hx, 2 * e, hz);
+      nrm.setXYZ(v, -hx / l, (2 * e) / l, -hz / l);
+    }
+    pos.clearUpdateRanges(); nrm.clearUpdateRanges();
+    pos.addUpdateRange(iz0 * row * 3, (iz1 - iz0 + 1) * row * 3);
+    nrm.addUpdateRange(iz0 * row * 3, (iz1 - iz0 + 1) * row * 3);
+    pos.needsUpdate = true; nrm.needsUpdate = true;
+  }
+
+  return { mesh, uniforms, setPath, noiseTex, refresh };
 }
 
 // Ray vs heightfield (cheap, no triangle raycasting needed)

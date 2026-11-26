@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import {
   cottageModel, storehouseModel, farmModel, woodcutterModel, fisheryModel, wellModel, gardenModel, lanternModel,
-  bakeryModel, marketModel, chapelModel, cropGeometry, MAT,
+  bakeryModel, marketModel, chapelModel, coopModel, pastureModel, cropGeometry, MAT,
 } from './models.js';
-import { GRID, HALF, cellIndex, inBounds, cellCenter, terrainHeight, WATER_LEVEL } from './terrain.js';
+import {
+  GRID, HALF, cellIndex, inBounds, cellCenter, terrainHeight, WATER_LEVEL, addSettle, removeSettle, settleBounds,
+} from './terrain.js';
 import { mulberry32, easeOutBack, smoothstep } from './noise.js';
 import { seasonal } from './seasons.js';
 
@@ -16,12 +18,22 @@ export const DEFS = {
   bakery:     { name: 'Bakery', icon: '🥖', size: 2, cost: 12, key: '6', workers: 1, cosy: 3, model: bakeryModel, desc: 'Farmers bring their wheat here and the baker turns every 5 wheat into 9 bread.' },
   market:     { name: 'Market', icon: '🧺', size: 3, cost: 14, key: '7', workers: 1, walkable: true, cosy: 4, cosyStaffed: 10, model: marketModel, desc: 'Villagers love a browse. The stallholder trades spare food with passing merchants for wood.' },
   chapel:     { name: 'Chapel', icon: '🔔', size: 2, cost: 16, key: '8', cosy: 14, model: chapelModel, desc: 'Its bell rings at dawn and dusk, and villagers gather there in the evening. Very cosy.' },
+  coop:       { name: 'Chicken Coop', icon: '🐔', size: 2, cost: 6, key: 'c', workers: 1, walkable: true, model: coopModel, animals: { kind: 'chicken', n: 5 }, desc: 'Hens peck about the run. The hen keeper collects eggs for the storehouse (fewer in winter).' },
+  dairy:      { name: 'Cow Pasture', icon: '🐄', size: 3, cost: 12, key: 'm', workers: 1, walkable: true, keepGrass: true, model: pastureModel('cow'), animals: { kind: 'cow', n: 3 }, desc: 'Three gentle cows. The dairy farmer milks them, and fresh milk feeds the village.' },
+  sheep:      { name: 'Sheep Pasture', icon: '🐑', size: 3, cost: 10, key: 'h', workers: 1, walkable: true, keepGrass: true, cosy: 4, model: pastureModel('sheep'), animals: { kind: 'sheep', n: 4 }, desc: 'Fluffy sheep and a shepherd. Their wool keeps everyone warm and cosy through winter.' },
   well:       { name: 'Well', icon: '🪣', size: 1, cost: 4, key: '9', cosy: 8, model: wellModel, desc: 'Villagers love to gather here. Adds cosiness.' },
   garden:     { name: 'Flower Bed', icon: '🌷', size: 1, cost: 1, key: '0', cosy: 3, model: gardenModel, desc: 'A little patch of flowers. Adds cosiness.' },
   lantern:    { name: 'Lantern', icon: '🏮', size: 1, cost: 2, key: 'l', cosy: 2, model: lanternModel, desc: 'Glows warmly through the night. Adds cosiness.' },
   storehouse: { name: 'Storehouse', icon: '🏠', size: 3, cost: 0, capacity: 3, model: storehouseModel, desc: 'The heart of the village. Goods are brought here.', fixed: true },
 };
-export const TOOL_ORDER = ['path', 'cottage', 'farm', 'woodcutter', 'fishery', 'bakery', 'market', 'chapel', 'well', 'garden', 'lantern'];
+export const TOOL_ORDER = ['path', 'cottage', 'farm', 'woodcutter', 'fishery', 'bakery', 'coop', 'dairy', 'sheep', 'market', 'chapel', 'well', 'garden', 'lantern'];
+// the build bar is grouped into tabs
+export const CATEGORIES = [
+  { id: 'home', name: 'Homes', icon: '🏡', tools: ['path', 'cottage', 'woodcutter'] },
+  { id: 'food', name: 'Food', icon: '🌾', tools: ['farm', 'bakery', 'fishery', 'coop', 'dairy'] },
+  { id: 'life', name: 'Village life', icon: '🔔', tools: ['market', 'chapel', 'sheep', 'well'] },
+  { id: 'decor', name: 'Decor', icon: '🌷', tools: ['garden', 'lantern'] },
+];
 
 let nextId = 1;
 
@@ -134,6 +146,8 @@ export class Buildings {
       smokeT: Math.random() * 2,
     };
     if (made.chimney) b.chimney = made.chimney;
+    if (made.keepClear) b.keepClear = made.keepClear;
+    if (made.house) b.house = made.house;
     if (made.flag) {
       const flag = new THREE.Mesh(this.flagGeo.clone(), this.flagMat);
       flag.position.copy(made.flag);
@@ -148,6 +162,9 @@ export class Buildings {
       group.add(glow);
       b.glow = glow;
     }
+    // the ground settles to the building's level and blends back into the meadow
+    b.settle = addSettle(id, c.x, c.z, def.size / 2, y, instant ? 1 : 0);
+    b.settleT = instant ? 1 : 0;
     if (type === 'farm') this._setupFarm(b);
     if (type === 'bakery') b.stock = 0;
     let wood = 0;
@@ -155,8 +172,9 @@ export class Buildings {
       const k = cellIndex(ci, cj);
       this.grid.occ[k] = id;
       if (this.grid.path[k]) { this.grid.path[k] = 0; this.terrain.setPath(ci, cj, false); }
-      wood += this.nature.clearCell(ci, cj);
+      wood += this.nature.clearCell(ci, cj, { keepGrass: !!def.keepGrass });
     }
+    if (instant) this._resettle(b);
     b.entrance = this._entrance(b);
     if (type === 'fishery') b.shore = this._shoreSpot(b);
     this.list.push(b);
@@ -165,6 +183,7 @@ export class Buildings {
       this.audio?.pop(c.x, c.z, def.size);
       this._dust(c.x, y, c.z, def.size);
     }
+    this.onPlace?.(b);
     root.scale.setScalar(instant ? 1 : 0.001);
     return { b, wood };
   }
@@ -264,6 +283,14 @@ export class Buildings {
     }
   }
 
+  _resettle(b) {
+    const r = settleBounds(b.settle);
+    this.terrain.refresh(r.x0, r.z0, r.x1, r.z1);
+    this.grid.refreshRegion(r.x0, r.z0, r.x1, r.z1);
+    this.nature.resettle(r.x0, r.z0, r.x1, r.z1);
+    this.onGroundChanged?.(r);
+  }
+
   remove(b) {
     if (b.removing >= 0) return;
     b.removing = 0;
@@ -274,6 +301,7 @@ export class Buildings {
     this.list = this.list.filter((x) => x !== b);
     this.byId.delete(b.id);
     (this.dying ||= []).push(b);
+    this.onRemove?.(b);
     this._dust(b.x, b.y, b.z, b.def.size);
     this.audio?.poof(b.x, b.z);
     this.refreshEntrances();
@@ -308,7 +336,11 @@ export class Buildings {
         const k = Math.min(1, b.removing);
         const s = 1 - k * k;
         b.root.scale.set(s * (1 + k * 0.2), Math.max(0.001, s), s * (1 + k * 0.2));
+        b.settle.k = smoothstep(0, 1, 1 - k);
+        this._resettle(b);
         if (k >= 1) {
+          removeSettle(b.id);
+          this._resettle(b);
           this.scene.remove(b.root);
           b.root.traverse((o) => { if (o.isMesh && o.geometry !== this.cropGeo) o.geometry.dispose(); });
           return false;
@@ -317,6 +349,11 @@ export class Buildings {
       });
     }
     for (const b of this.list) {
+      if (b.settleT < 1) {
+        b.settleT = Math.min(1, b.settleT + dt / 0.45);
+        b.settle.k = smoothstep(0, 1, b.settleT);
+        this._resettle(b);
+      }
       if (b.anim < 1) {
         b.anim = Math.min(1, b.anim + dt / 0.65);
         const s = easeOutBack(b.anim);
